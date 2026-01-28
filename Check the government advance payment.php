@@ -1,4 +1,12 @@
 <?php
+session_start(); // 1. เริ่มต้น Session
+
+// 2. ตรวจสอบว่าได้ Login หรือยัง ถ้ายังให้เด้งไปหน้า Login
+if (!isset($_SESSION['user_id'])) {
+    header("Location: Login.php");
+    exit();
+}
+
 // --- เชื่อมต่อฐานข้อมูล ---
 $servername = "localhost";
 $username = "root";
@@ -37,8 +45,8 @@ if (isset($_GET['toggle_id']) && isset($_GET['type'])) {
         $stmt->execute();
     }
 
-    // Redirect กลับมาหน้าเดิม (รองรับชื่อไฟล์ที่มีเว้นวรรค)
-    header("Location: " . $_SERVER['PHP_SELF']);
+    // Redirect กลับมาหน้าเดิม
+    header("Location: Check the government advance payment.php");
     exit();
 }
 
@@ -75,7 +83,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>จ่ายเงินทดรองราชการ - AMSS++</title>
+    <title>ตรวจสอบจ่ายเงินทดรองราชการ - AMSS++</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -98,6 +106,22 @@ $current_page = basename($_SERVER['PHP_SELF']);
         }
         
         .top-header { background-color: var(--primary-dark); color: white; padding: 10px 20px; }
+        
+        /* User Info & Logout Button Styles */
+        .user-info { font-size: 0.9rem; text-align: right; }
+        .user-role { color: var(--accent-yellow); font-weight: 700; text-transform: uppercase; }
+        .btn-logout {
+            color: #ff6b6b;
+            text-decoration: none;
+            margin-left: 10px;
+            font-size: 0.85rem;
+            border: 1px solid #ff6b6b;
+            padding: 2px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .btn-logout:hover { background-color: #ff6b6b; color: white; }
+
         .sub-header { background: linear-gradient(90deg, var(--accent-yellow) 0%, var(--accent-gold) 100%); padding: 8px 20px; font-weight: 700; color: var(--primary-dark); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .navbar-custom { background-color: var(--menu-bg); padding: 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         
@@ -111,30 +135,21 @@ $current_page = basename($_SERVER['PHP_SELF']);
         
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
-        .dropdown-item.active, .dropdown-item:active { background-color: white; color: var(--primary-dark); font-weight: 500; }
+        
+        /* Dropdown item active color fix (Bold & Black) */
+        .dropdown-item.active, .dropdown-item:active {
+            background-color: white; 
+            color: black !important; /* บังคับตัวหนังสือสีดำ */
+            font-weight: bold !important; /* บังคับตัวหนา */
+        }
 
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
         
-        .page-title { color: #008080; font-weight: 700; text-align: center; margin-bottom: 25px; font-size: 1.4rem; } 
+        .page-title { color: #008080; font-weight: 700; text-align: center; margin-bottom: 5px; font-size: 1.4rem; } 
+        .page-pagination { color: #d63384; font-weight: bold; text-align: center; margin-bottom: 20px; font-size: 0.9rem; }
         
-        /* --- Table Styles (Dark Gold / White) --- */
-        .table-custom th { 
-            background-color: var(--header-gold); 
-            color: white; 
-            font-weight: 500; 
-            text-align: center; 
-            vertical-align: middle; 
-            border: 1px solid rgba(255,255,255,0.2); 
-            font-size: 0.85rem; 
-            padding: 8px 4px;
-        }
-        .table-custom td { 
-            vertical-align: middle; 
-            border-bottom: 1px solid #f0f0f0; 
-            padding: 6px 4px; 
-            font-size: 0.85rem; 
-            background-color: white !important;
-        }
+        .table-custom th { background-color: var(--header-gold); color: white; font-weight: 500; text-align: center; vertical-align: middle; border: 1px solid rgba(255,255,255,0.2); font-size: 0.85rem; padding: 8px 4px; }
+        .table-custom td { vertical-align: middle; border-bottom: 1px solid #f0f0f0; padding: 6px 4px; font-size: 0.85rem; background-color: white !important; }
         
         .table-striped > tbody > tr:nth-of-type(odd) > * { --bs-table-accent-bg: transparent; }
         .table-striped > tbody > tr:nth-of-type(even) > * { --bs-table-accent-bg: transparent; }
@@ -142,42 +157,46 @@ $current_page = basename($_SERVER['PHP_SELF']);
         .td-center { text-align: center; }
         .td-right { text-align: right; }
         .td-left { text-align: left; }
-
+        
         .btn-detail { color: #6c757d; font-size: 1.1rem; border: none; background: none; cursor: pointer; } 
         .btn-detail:hover { transform: scale(1.2); }
-
-        /* Status Boxes */
+        
         .status-box { width: 16px; height: 16px; display: inline-block; vertical-align: middle; border: 1px solid #ccc; cursor: pointer; transition: transform 0.1s; }
         .status-box:hover { transform: scale(1.2); }
         .status-yellow { background-color: #ffff00; }
         .status-green { background-color: #00ff00; }
         .status-red { background-color: #ff0000; }
-
-        /* Modal Styles */
+        
         .form-yellow-bg { background-color: #fff9c4; padding: 20px; border-radius: 5px; border: 1px solid #eee; }
         .form-label-custom { font-weight: bold; text-align: right; font-size: 0.9rem; }
         .modal-header { background-color: transparent; border-bottom: none; }
         .modal-title-custom { color: #008080; font-weight: bold; width: 100%; text-align: center; font-size: 1.3rem;}
-
-        /* Legend */
+        
         .legend-container { margin-top: 20px; font-size: 0.85rem; }
         .legend-item { display: flex; align-items: center; margin-bottom: 5px; }
         .legend-box { width: 14px; height: 14px; margin-right: 8px; border: 1px solid #ccc; }
         
-        .description-text { font-size: 1.1rem; color: #333; line-height: 1.8; text-align: left; padding-left: 20px; }
+        .description-text { font-size: 1rem; color: #333; line-height: 1.8; text-align: justify; text-indent: 50px; }
     </style>
 </head>
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
         <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
-        <div class="text-end small">
-            ผู้ใช้ : สมชาย นิลสุวรรณ (**Administrator**)<br>
-            <?php echo thai_date_full(time()); ?>
+        
+        <div class="user-info">
+            <div>
+                ผู้ใช้ : <?php echo htmlspecialchars($_SESSION['fullname']); ?> 
+                (<span class="user-role">**<?php echo $_SESSION['role']; ?>**</span>)
+                <a href="Logout.php" class="btn-logout" onclick="return confirm('ยืนยันออกจากระบบ?');">
+                    <i class="fa-solid fa-power-off"></i> ออก
+                </a>
+            </div>
+            <small class="text-white-50"><?php echo thai_date_full(time()); ?></small>
         </div>
-    </div>
+        </div>
 
-    <div class="sub-header">จ่ายเงินทดรองราชการ</div>
+    <div class="sub-header">ตรวจสอบการจ่ายเงินทดรองราชการ</div>
 
     <div class="navbar-custom">
         <div class="container-fluid d-flex flex-wrap">
@@ -234,17 +253,17 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 </ul>
             </div>
 
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Budget.php', 'Off-budget funds.php', 'National income.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
+             <div class="dropdown">
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
-
+            
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (strpos(urldecode($current_page), 'Check the government advance payment.php') !== false || in_array($current_page, ['Check budget allocation.php', 'Check the periodic financial report.php', 'Check main payment type.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตรวจสอบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle active" data-bs-toggle="dropdown">ตรวจสอบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Check budget allocation.php">ตรวจสอบการจัดสรรงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Check the periodic financial report.php">รายงานเงินประจำงวด</a></li>
@@ -274,6 +293,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                     <li><a class="dropdown-item" href="Loan Report.php">รายงานลูกหนี้เงินยืม</a></li>
                 </ul>
             </div>
+
             <a href="#" class="nav-link-custom ms-auto">คู่มือ</a>
         </div>
     </div>
@@ -281,17 +301,18 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">จ่ายเงินทดรองราชการ ปีงบประมาณ 2568</h2>
+            <h2 class="page-title">ตรวจสอบการจ่ายเงินทดรองราชการ - AMSS++</h2>
+            <div class="page-pagination">หน้า [1]</div>
 
             <div class="table-responsive">
                 <table class="table table-striped table-custom">
                     <thead>
                         <tr>
                             <th style="width: 5%;">ที่</th>
-                            <th style="width: 10%;">วดป</th>
-                            <th style="width: 50%;">รายการ</th>
-                            <th style="width: 15%;">จำนวนเงิน</th>
-                            <th style="width: 10%;">รายละเอียด</th>
+                            <th style="width: 8%;">วดป</th>
+                            <th style="width: 35%;">รายการ</th>
+                            <th style="width: 10%;">จำนวนเงิน</th>
+                            <th style="width: 5%;">ราย<br>ละเอียด</th>
                             <th style="width: 5%;">อนุมัติ</th>
                             <th style="width: 5%;">จ่ายเงิน</th>
                         </tr>
@@ -323,12 +344,12 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                 echo '<button class="btn-detail" onclick="openDetailModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')"><i class="fa-solid fa-list-ul"></i></button>';
                                 echo "</td>";
 
-                                // อนุมัติ
+                                // อนุมัติ (เพิ่มลิงก์ Toggle)
                                 echo "<td class='td-center'>";
                                 echo '<a href="?toggle_id='.$row['id'].'&type=approval&current='.$row['approval_status'].'" title="'.$app_text.'"><div class="status-box '.$app_class.'"></div></a>';
                                 echo "</td>";
 
-                                // จ่ายเงิน
+                                // จ่ายเงิน (เพิ่มลิงก์ Toggle)
                                 echo "<td class='td-center'>";
                                 echo '<a href="?toggle_id='.$row['id'].'&type=payment&current='.$row['payment_status'].'" title="'.$pay_text.'"><div class="status-box '.$pay_class.'"></div></a>';
                                 echo "</td>";
@@ -358,7 +379,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             
             <div class="mt-4 p-4 border-0">
                 <p class="description-text">
-                    ขั้นตอนการตรวจสอบเหมือนเงินประเภทหลัก
+                    หน้านี้ เป็นการตรวจสอบการจ่ายเงินทดรองราชการ ขั้นตอนเหมือนเงินประเภทหลัก
                 </p>
             </div>
 

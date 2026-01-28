@@ -54,6 +54,7 @@ function thai_date_short($date_str) {
     return "$d {$thai_month_arr[$m]} $y_short"; 
 }
 
+// ฟังก์ชันวันที่ไทย (สำหรับ Header)
 function thai_date_full($timestamp) {
     $thai_day_arr = array("อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์");
     $thai_month_arr = array("0"=>"","1"=>"มกราคม","2"=>"กุมภาพันธ์","3"=>"มีนาคม","4"=>"เมษายน","5"=>"พฤษภาคม","6"=>"มิถุนายน","7"=>"กรกฎาคม","8"=>"สิงหาคม","9"=>"กันยายน","10"=>"ตุลาคม","11"=>"พฤศจิกายน","12"=>"ธันวาคม");
@@ -65,6 +66,8 @@ function thai_date_full($timestamp) {
 
 // *** เช็คหน้าปัจจุบัน ***
 $current_page = basename($_SERVER['PHP_SELF']);
+// หมายเหตุ: ชื่อไฟล์มีเว้นวรรค
+$current_page_encoded = urlencode('Annuity register.php');
 ?>
 
 <!DOCTYPE html>
@@ -95,15 +98,42 @@ $current_page = basename($_SERVER['PHP_SELF']);
         }
         
         .top-header { background-color: var(--primary-dark); color: white; padding: 10px 20px; }
+        
+        /* User Info & Logout Button Styles */
+        .user-info { font-size: 0.9rem; text-align: right; }
+        .user-role { color: var(--accent-yellow); font-weight: 700; text-transform: uppercase; }
+        .btn-logout {
+            color: #ff6b6b;
+            text-decoration: none;
+            margin-left: 10px;
+            font-size: 0.85rem;
+            border: 1px solid #ff6b6b;
+            padding: 2px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .btn-logout:hover { background-color: #ff6b6b; color: white; }
+
         .sub-header { background: linear-gradient(90deg, var(--accent-yellow) 0%, var(--accent-gold) 100%); padding: 8px 20px; font-weight: 700; color: var(--primary-dark); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .navbar-custom { background-color: var(--menu-bg); padding: 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         
+        /* Active Menu Logic */
         .nav-link-custom { color: #aaa; padding: 12px 20px; text-decoration: none; display: inline-block; transition: all 0.3s; border-bottom: 3px solid transparent; font-size: 0.95rem; }
-        .nav-link-custom:hover, .nav-link-custom.active { color: #fff; background-color: #333; border-bottom-color: var(--accent-yellow); }
+        .nav-link-custom:hover, .nav-link-custom.active { 
+            color: #fff; 
+            background-color: #333; 
+            border-bottom-color: var(--accent-yellow); 
+        }
         
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
-        .dropdown-item.active, .dropdown-item:active { background-color: white; color: var(--primary-dark); font-weight: 500; }
+        
+        /* Dropdown item active color fix (Bold & Black) */
+        .dropdown-item.active, .dropdown-item:active {
+            background-color: white; 
+            color: black !important; /* บังคับตัวหนังสือสีดำ */
+            font-weight: bold !important; /* บังคับตัวหนา */
+        }
 
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
         .page-title { color: #008080; font-weight: 700; text-align: center; margin-bottom: 5px; font-size: 1.4rem; } 
@@ -130,21 +160,6 @@ $current_page = basename($_SERVER['PHP_SELF']);
         .form-label-custom { font-weight: bold; text-align: right; font-size: 0.9rem; }
         .modal-header { background-color: transparent; border-bottom: none; }
         .modal-title-custom { color: #008080; font-weight: bold; width: 100%; text-align: center; font-size: 1.3rem;}
-
-        /* User Info & Logout Button Styles */
-        .user-info { font-size: 0.9rem; text-align: right; }
-        .user-role { color: var(--accent-yellow); font-weight: 700; text-transform: uppercase; }
-        .btn-logout {
-            color: #ff6b6b;
-            text-decoration: none;
-            margin-left: 10px;
-            font-size: 0.85rem;
-            border: 1px solid #ff6b6b;
-            padding: 2px 8px;
-            border-radius: 4px;
-            transition: all 0.2s;
-        }
-        .btn-logout:hover { background-color: #ff6b6b; color: white; }
     </style>
 </head>
 <body>
@@ -221,17 +236,17 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 </ul>
             </div>
 
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Budget.php', 'Off-budget funds.php', 'National income.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
+             <div class="dropdown">
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Off_budget_funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
-
+            
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Check budget allocation.php', 'Check the periodic financial report.php', 'Check main payment type.php', 'Check the government advance payment.php', 'The appeal number does not exist in the system.php', 'Appeals regarding project termination classified by invoice.php', 'Supreme Court Rulings and References for Reimbursement Requests Classified by Ruling.php', 'Withdrawal requests that have not yet been submitted for approval.php', 'Requisition items with incorrect installment vouchers.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตรวจสอบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตรวจสอบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Check budget allocation.php">ตรวจสอบการจัดสรรงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Check the periodic financial report.php">รายงานเงินประจำงวด</a></li>
@@ -246,7 +261,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </div>
 
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (strpos(urldecode($current_page), 'Annuity register.php') !== false || in_array($current_page, ['Budget allocation report.php', 'Expenditure report categorized by project.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">รายงาน</a>
+                <a href="#" class="nav-link-custom dropdown-toggle active" data-bs-toggle="dropdown">รายงาน</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget allocation report.php">รายงานการจัดสรรงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Expenditure report categorized by project.php">รายงานการใช้จ่ายจำแนกตามโครงการ</a></li>

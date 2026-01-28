@@ -1,4 +1,12 @@
 <?php
+session_start(); // 1. เริ่มต้น Session
+
+// 2. ตรวจสอบว่าได้ Login หรือยัง ถ้ายังให้เด้งไปหน้า Login
+if (!isset($_SESSION['user_id'])) {
+    header("Location: Login.php");
+    exit();
+}
+
 // --- เชื่อมต่อฐานข้อมูล ---
 $servername = "localhost";
 $username = "root";
@@ -35,12 +43,22 @@ if ($result_data->num_rows > 0) {
     }
 }
 
-// ฟังก์ชันวันที่ไทย
+// ฟังก์ชันวันที่ไทยสำหรับ Dropdown
 function thai_month_arr() {
     return array(
         "1"=>"มกราคม","2"=>"กุมภาพันธ์","3"=>"มีนาคม","4"=>"เมษายน","5"=>"พฤษภาคม","6"=>"มิถุนายน",
         "7"=>"กรกฎาคม","8"=>"สิงหาคม","9"=>"กันยายน","10"=>"ตุลาคม","11"=>"พฤศจิกายน","12"=>"ธันวาคม"
     );
+}
+
+// ฟังก์ชันวันที่ไทย (สำหรับ Header)
+function thai_date_full($timestamp) {
+    $thai_day_arr = array("อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์");
+    $thai_month_arr = array("0"=>"","1"=>"มกราคม","2"=>"กุมภาพันธ์","3"=>"มีนาคม","4"=>"เมษายน","5"=>"พฤษภาคม","6"=>"มิถุนายน","7"=>"กรกฎาคม","8"=>"สิงหาคม","9"=>"กันยายน","10"=>"ตุลาคม","11"=>"พฤศจิกายน","12"=>"ธันวาคม");
+    $d = date("j", $timestamp);
+    $m = date("n", $timestamp);
+    $y = date("Y", $timestamp) + 543;
+    return "วัน" . $thai_day_arr[date("w", $timestamp)] . "ที่ $d $thai_month_arr[$m] พ.ศ. $y";
 }
 
 // *** เช็คหน้าปัจจุบัน ***
@@ -76,6 +94,22 @@ $current_page_encoded = urlencode('Daily cash balance report.php');
         }
         
         .top-header { background-color: var(--primary-dark); color: white; padding: 10px 20px; }
+        
+        /* User Info & Logout Button Styles */
+        .user-info { font-size: 0.9rem; text-align: right; }
+        .user-role { color: var(--accent-yellow); font-weight: 700; text-transform: uppercase; }
+        .btn-logout {
+            color: #ff6b6b;
+            text-decoration: none;
+            margin-left: 10px;
+            font-size: 0.85rem;
+            border: 1px solid #ff6b6b;
+            padding: 2px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .btn-logout:hover { background-color: #ff6b6b; color: white; }
+
         .sub-header { background: linear-gradient(90deg, var(--accent-yellow) 0%, var(--accent-gold) 100%); padding: 8px 20px; font-weight: 700; color: var(--primary-dark); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .navbar-custom { background-color: var(--menu-bg); padding: 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         
@@ -89,7 +123,13 @@ $current_page_encoded = urlencode('Daily cash balance report.php');
         
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
-        .dropdown-item.active, .dropdown-item:active { background-color: white; color: var(--primary-dark); font-weight: 500; }
+        
+        /* Dropdown item active color fix (Bold & Black) */
+        .dropdown-item.active, .dropdown-item:active {
+            background-color: white; 
+            color: black !important; /* บังคับตัวหนังสือสีดำ */
+            font-weight: bold !important; /* บังคับตัวหนา */
+        }
 
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
         
@@ -148,11 +188,18 @@ $current_page_encoded = urlencode('Daily cash balance report.php');
 
     <div class="top-header d-flex justify-content-between align-items-center">
         <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
-        <div class="text-end small">
-            ผู้ใช้ : สมชาย นิลสุวรรณ (**Administrator**)<br>
-            <?php echo date('d/m/Y'); ?>
+        
+        <div class="user-info">
+            <div>
+                ผู้ใช้ : <?php echo htmlspecialchars($_SESSION['fullname']); ?> 
+                (<span class="user-role">**<?php echo $_SESSION['role']; ?>**</span>)
+                <a href="Logout.php" class="btn-logout" onclick="return confirm('ยืนยันออกจากระบบ?');">
+                    <i class="fa-solid fa-power-off"></i> ออก
+                </a>
+            </div>
+            <small class="text-white-50"><?php echo thai_date_full(time()); ?></small>
         </div>
-    </div>
+        </div>
 
     <div class="sub-header">รายงานเงินคงเหลือประจำวัน</div>
 
@@ -211,17 +258,17 @@ $current_page_encoded = urlencode('Daily cash balance report.php');
                 </ul>
             </div>
 
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Budget.php', 'Off-budget funds.php', 'National income.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
+             <div class="dropdown">
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
-
+            
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Check budget allocation.php', 'Check the periodic financial report.php', 'Check main payment type.php', 'Check the government advance payment.php', 'The appeal number does not exist in the system.php', 'Appeals regarding project termination classified by invoice.php', 'Supreme Court Rulings and References for Reimbursement Requests Classified by Ruling.php', 'Withdrawal requests that have not yet been submitted for approval.php', 'Requisition items with incorrect installment vouchers.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตรวจสอบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตรวจสอบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Check budget allocation.php">ตรวจสอบการจัดสรรงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Check the periodic financial report.php">รายงานเงินประจำงวด</a></li>
@@ -236,7 +283,7 @@ $current_page_encoded = urlencode('Daily cash balance report.php');
             </div>
 
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (strpos(urldecode($current_page), 'Daily cash balance report.php') !== false) ? 'active' : ''; ?>" data-bs-toggle="dropdown">รายงาน</a>
+                <a href="#" class="nav-link-custom dropdown-toggle active" data-bs-toggle="dropdown">รายงาน</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget allocation report.php">รายงานการจัดสรรงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Expenditure report categorized by project.php">รายงานการใช้จ่ายจำแนกตามโครงการ</a></li>
@@ -256,7 +303,7 @@ $current_page_encoded = urlencode('Daily cash balance report.php');
         </div>
     </div>
 
-    <div class="container-fluid pb10 px10">
+    <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
             <h2 class="page-title">รายงานเงินคงเหลือประจำวัน</h2>

@@ -1,4 +1,12 @@
 <?php
+session_start(); // 1. เริ่มต้น Session
+
+// 2. ตรวจสอบว่าได้ Login หรือยัง ถ้ายังให้เด้งไปหน้า Login
+if (!isset($_SESSION['user_id'])) {
+    header("Location: Login.php");
+    exit();
+}
+
 // --- เชื่อมต่อฐานข้อมูล ---
 $servername = "localhost";
 $username = "root";
@@ -16,11 +24,8 @@ if ($conn->connect_error) {
 $sql_data = "SELECT * FROM expenditure_by_types ORDER BY type_code ASC";
 $result_data = $conn->query($sql_data);
 
-// คำนวณยอดรวม
+// คำนวณยอดรวม (ถ้าต้องการใช้)
 $total_amount = 0;
-// เราต้องวนลูปเพื่อหาผลรวมก่อน หรือใช้ SQL SUM() ก็ได้
-// แต่ถ้าใช้ while fetch_assoc ในการแสดงผล เราต้องเก็บข้อมูลไว้ก่อน หรือ query ใหม่
-// ในที่นี้ขอใช้ query แยกเพื่อความง่ายในการแสดงผลยอดรวมท้ายตาราง
 $sql_sum = "SELECT SUM(amount) as total FROM expenditure_by_types";
 $result_sum = $conn->query($sql_sum);
 $row_sum = $result_sum->fetch_assoc();
@@ -33,14 +38,14 @@ function thai_date_full($timestamp) {
     $d = date("j", $timestamp);
     $m = date("n", $timestamp);
     $y = date("Y", $timestamp) + 543;
-    // รูปแบบตามหัวข้อในภาพ: วันที่ 06 เดือนกรกฎาคม พ.ศ.2555
+    // รูปแบบตามหัวข้อ: วันที่ 06 เดือนกรกฎาคม พ.ศ.2555
     return "วันที่ " . str_pad($d, 2, '0', STR_PAD_LEFT) . " เดือน" . $thai_month_arr[$m] . " พ.ศ." . $y;
 }
 
 // *** เช็คหน้าปัจจุบัน ***
 $current_page = basename($_SERVER['PHP_SELF']);
-// ชื่อไฟล์สำหรับ Active Menu
-$current_page_encoded = urlencode('Expenditure report categorized by type of.php');
+// หมายเหตุ: ชื่อไฟล์มีเว้นวรรค
+$current_page_check = 'Expenditure report categorized by type of.php';
 ?>
 
 <!DOCTYPE html>
@@ -71,6 +76,22 @@ $current_page_encoded = urlencode('Expenditure report categorized by type of.php
         }
         
         .top-header { background-color: var(--primary-dark); color: white; padding: 10px 20px; }
+        
+        /* User Info & Logout Button Styles */
+        .user-info { font-size: 0.9rem; text-align: right; }
+        .user-role { color: var(--accent-yellow); font-weight: 700; text-transform: uppercase; }
+        .btn-logout {
+            color: #ff6b6b;
+            text-decoration: none;
+            margin-left: 10px;
+            font-size: 0.85rem;
+            border: 1px solid #ff6b6b;
+            padding: 2px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .btn-logout:hover { background-color: #ff6b6b; color: white; }
+
         .sub-header { background: linear-gradient(90deg, var(--accent-yellow) 0%, var(--accent-gold) 100%); padding: 8px 20px; font-weight: 700; color: var(--primary-dark); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .navbar-custom { background-color: var(--menu-bg); padding: 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         
@@ -84,7 +105,13 @@ $current_page_encoded = urlencode('Expenditure report categorized by type of.php
         
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
-        .dropdown-item.active, .dropdown-item:active { background-color: white; color: var(--primary-dark); font-weight: 500; }
+        
+        /* Dropdown item active color fix (Bold & Black) */
+        .dropdown-item.active, .dropdown-item:active {
+            background-color: white; 
+            color: black !important; /* บังคับตัวหนังสือสีดำ */
+            font-weight: bold !important; /* บังคับตัวหนา */
+        }
 
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
         
@@ -110,6 +137,7 @@ $current_page_encoded = urlencode('Expenditure report categorized by type of.php
             background-color: white !important;
         }
         
+        /* Cancel Striped */
         .table-striped > tbody > tr:nth-of-type(odd) > * { --bs-table-accent-bg: transparent; }
         .table-striped > tbody > tr:nth-of-type(even) > * { --bs-table-accent-bg: transparent; }
         
@@ -129,11 +157,18 @@ $current_page_encoded = urlencode('Expenditure report categorized by type of.php
 
     <div class="top-header d-flex justify-content-between align-items-center">
         <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
-        <div class="text-end small">
-            ผู้ใช้ : สมชาย นิลสุวรรณ (**Administrator**)<br>
-            <?php echo thai_date_full(time()); ?>
+        
+        <div class="user-info">
+            <div>
+                ผู้ใช้ : <?php echo htmlspecialchars($_SESSION['fullname']); ?> 
+                (<span class="user-role">**<?php echo $_SESSION['role']; ?>**</span>)
+                <a href="Logout.php" class="btn-logout" onclick="return confirm('ยืนยันออกจากระบบ?');">
+                    <i class="fa-solid fa-power-off"></i> ออก
+                </a>
+            </div>
+            <small class="text-white-50"><?php echo thai_date_full(time()); ?></small>
         </div>
-    </div>
+        </div>
 
     <div class="sub-header">รายงานการใช้จ่าย จำแนกตามประเภทรายการจ่าย</div>
 
@@ -192,17 +227,17 @@ $current_page_encoded = urlencode('Expenditure report categorized by type of.php
                 </ul>
             </div>
 
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Budget.php', 'Off-budget funds.php', 'National income.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
+             <div class="dropdown">
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
-
+            
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Check budget allocation.php', 'Check the periodic financial report.php', 'Check main payment type.php', 'Check the government advance payment.php', 'The appeal number does not exist in the system.php', 'Appeals regarding project termination classified by invoice.php', 'Supreme Court Rulings and References for Reimbursement Requests Classified by Ruling.php', 'Withdrawal requests that have not yet been submitted for approval.php', 'Requisition items with incorrect installment vouchers.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตรวจสอบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตรวจสอบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Check budget allocation.php">ตรวจสอบการจัดสรรงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Check the periodic financial report.php">รายงานเงินประจำงวด</a></li>
@@ -217,7 +252,7 @@ $current_page_encoded = urlencode('Expenditure report categorized by type of.php
             </div>
 
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (strpos(urldecode($current_page), 'Expenditure report categorized by type of.php') !== false || in_array($current_page, ['Budget allocation report.php', 'Expenditure report categorized by project.php', 'Annuity register.php', 'Expenditure report categorized by budget code.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">รายงาน</a>
+                <a href="#" class="nav-link-custom dropdown-toggle active" data-bs-toggle="dropdown">รายงาน</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget allocation report.php">รายงานการจัดสรรงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Expenditure report categorized by project.php">รายงานการใช้จ่ายจำแนกตามโครงการ</a></li>
@@ -271,7 +306,6 @@ $current_page_encoded = urlencode('Expenditure report categorized by type of.php
                             $i = 1;
                             while($row = $result_data->fetch_assoc()) {
                                 
-                                // ถ้าไม่มี amount (0.00) ให้แสดงเป็น 0.00 และ % เป็นว่าง
                                 $pct = ($row['percentage'] > 0) ? number_format($row['percentage'], 2) : '';
 
                                 echo "<tr>";
@@ -282,15 +316,6 @@ $current_page_encoded = urlencode('Expenditure report categorized by type of.php
                                 echo "<td class='td-center'>" . $pct . "</td>";
                                 echo "</tr>";
                             }
-
-                            // แถวรวม (ถ้าต้องการแสดงยอดรวม)
-                            /*
-                            echo "<tr class='total-row'>";
-                            echo "<td colspan='3' class='td-center'>รวมทั้งสิ้น</td>";
-                            echo "<td class='td-right'>" . number_format($total_amount, 2) . "</td>";
-                            echo "<td></td>";
-                            echo "</tr>";
-                            */
 
                         } else {
                             echo "<tr><td colspan='5' class='text-center py-4 text-muted'>ไม่พบข้อมูล</td></tr>";

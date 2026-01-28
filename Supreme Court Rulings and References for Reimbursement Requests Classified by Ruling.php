@@ -1,4 +1,12 @@
 <?php
+session_start(); // 1. เริ่มต้น Session
+
+// 2. ตรวจสอบว่าได้ Login หรือยัง ถ้ายังให้เด้งไปหน้า Login
+if (!isset($_SESSION['user_id'])) {
+    header("Location: Login.php");
+    exit();
+}
+
 // --- เชื่อมต่อฐานข้อมูล ---
 $servername = "localhost";
 $username = "root";
@@ -40,8 +48,8 @@ function thai_date_full($timestamp) {
 
 // *** เช็คหน้าปัจจุบัน ***
 $current_page = basename($_SERVER['PHP_SELF']);
-// ชื่อไฟล์ยาวมาก ต้องใช้ urlencode
-$current_page_encoded = urlencode('Supreme Court Rulings and References for Reimbursement Requests Classified by Ruling.php');
+// ชื่อไฟล์ยาวมาก ต้องใช้ urlencode เวลาเช็คบางทีอาจต้องเช็คทั้งชื่อเต็ม
+$current_page_check = 'Supreme Court Rulings and References for Reimbursement Requests Classified by Ruling.php';
 ?>
 
 <!DOCTYPE html>
@@ -72,6 +80,22 @@ $current_page_encoded = urlencode('Supreme Court Rulings and References for Reim
         }
         
         .top-header { background-color: var(--primary-dark); color: white; padding: 10px 20px; }
+        
+        /* User Info & Logout Button Styles */
+        .user-info { font-size: 0.9rem; text-align: right; }
+        .user-role { color: var(--accent-yellow); font-weight: 700; text-transform: uppercase; }
+        .btn-logout {
+            color: #ff6b6b;
+            text-decoration: none;
+            margin-left: 10px;
+            font-size: 0.85rem;
+            border: 1px solid #ff6b6b;
+            padding: 2px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .btn-logout:hover { background-color: #ff6b6b; color: white; }
+
         .sub-header { background: linear-gradient(90deg, var(--accent-yellow) 0%, var(--accent-gold) 100%); padding: 8px 20px; font-weight: 700; color: var(--primary-dark); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .navbar-custom { background-color: var(--menu-bg); padding: 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         
@@ -85,7 +109,13 @@ $current_page_encoded = urlencode('Supreme Court Rulings and References for Reim
         
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
-        .dropdown-item.active, .dropdown-item:active { background-color: white; color: var(--primary-dark); font-weight: 500; }
+        
+        /* Dropdown item active color fix (Bold & Black) */
+        .dropdown-item.active, .dropdown-item:active {
+            background-color: white; 
+            color: black !important; /* บังคับตัวหนังสือสีดำ */
+            font-weight: bold !important; /* บังคับตัวหนา */
+        }
 
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
         
@@ -128,11 +158,18 @@ $current_page_encoded = urlencode('Supreme Court Rulings and References for Reim
 
     <div class="top-header d-flex justify-content-between align-items-center">
         <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
-        <div class="text-end small">
-            ผู้ใช้ : สมชาย นิลสุวรรณ (**Administrator**)<br>
-            <?php echo thai_date_full(time()); ?>
+        
+        <div class="user-info">
+            <div>
+                ผู้ใช้ : <?php echo htmlspecialchars($_SESSION['fullname']); ?> 
+                (<span class="user-role">**<?php echo $_SESSION['role']; ?>**</span>)
+                <a href="Logout.php" class="btn-logout" onclick="return confirm('ยืนยันออกจากระบบ?');">
+                    <i class="fa-solid fa-power-off"></i> ออก
+                </a>
+            </div>
+            <small class="text-white-50"><?php echo thai_date_full(time()); ?></small>
         </div>
-    </div>
+        </div>
 
     <div class="sub-header">ตรวจสอบฎีกากับการอ้างอิงการขอเบิกฯ จำแนกตามฎีกา</div>
 
@@ -191,17 +228,17 @@ $current_page_encoded = urlencode('Supreme Court Rulings and References for Reim
                 </ul>
             </div>
 
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Budget.php', 'Off-budget funds.php', 'National income.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
+             <div class="dropdown">
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
-
+            
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (strpos(urldecode($current_page), 'Supreme Court Rulings and References for Reimbursement Requests Classified by Ruling.php') !== false || in_array($current_page, ['Check budget allocation.php', 'Check the periodic financial report.php', 'Check main payment type.php', 'Check the government advance payment.php', 'The appeal number does not exist in the system.php', 'Appeals regarding project termination classified by invoice.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตรวจสอบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle active" data-bs-toggle="dropdown">ตรวจสอบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Check budget allocation.php">ตรวจสอบการจัดสรรงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Check the periodic financial report.php">รายงานเงินประจำงวด</a></li>
@@ -215,7 +252,7 @@ $current_page_encoded = urlencode('Supreme Court Rulings and References for Reim
                 </ul>
             </div>
 
-            <div class="dropdown">
+             <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">รายงาน</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget allocation report.php">รายงานการจัดสรรงบประมาณ</a></li>
@@ -243,10 +280,23 @@ $current_page_encoded = urlencode('Supreme Court Rulings and References for Reim
             <div class="pagination-container">
                 <a href="?page=1" class="pagination-link">&lt;หน้าแรก</a> 
                 <a href="?page=<?php echo max(1, $page-1); ?>" class="pagination-link">&lt;&lt;หน้าก่อน</a> 
-                [<a href="#" class="pagination-link">10</a>][<a href="#" class="pagination-link">11</a>][<a href="#" class="pagination-link">12</a>][<a href="#" class="pagination-link">13</a>][<a href="#" class="pagination-link">14</a>][<a href="#" class="pagination-link">15</a>][<a href="#" class="pagination-link">16</a>][<a href="#" class="pagination-link">17</a>][<a href="#" class="pagination-link">18</a>][<a href="#" class="pagination-link">19</a>][<a href="#" class="pagination-link">20</a>][<a href="#" class="pagination-link">21</a>][<a href="#" class="pagination-link">22</a>][<a href="#" class="pagination-link">23</a>][<a href="#" class="pagination-link">24</a>][<span class="pagination-active">25</span>] 
+                
+                <?php
+                // แสดงหน้า 1 ถึง 5 (ตัวอย่าง) หรือปรับ Logic ตามต้องการ
+                for ($i = 1; $i <= min(5, $total_pages); $i++) {
+                    if ($i == $page) {
+                        echo '<span class="pagination-active">['.$i.']</span> ';
+                    } else {
+                        echo '[<a href="?page='.$i.'" class="pagination-link">'.$i.'</a>] ';
+                    }
+                }
+                ?>
+                
                 หน้า 
-                <select class="form-select form-select-sm d-inline-block" style="width: auto;">
-                    <option>25</option>
+                <select class="form-select form-select-sm d-inline-block" style="width: auto;" onchange="location = this.value;">
+                    <?php for($i=1; $i<=$total_pages; $i++): ?>
+                        <option value="?page=<?php echo $i; ?>" <?php echo ($i == $page) ? 'selected' : ''; ?>><?php echo $i; ?></option>
+                    <?php endfor; ?>
                 </select>
             </div>
 

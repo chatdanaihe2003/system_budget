@@ -1,4 +1,12 @@
 <?php
+session_start(); // 1. เริ่มต้น Session
+
+// 2. ตรวจสอบว่าได้ Login หรือยัง ถ้ายังให้เด้งไปหน้า Login
+if (!isset($_SESSION['user_id'])) {
+    header("Location: Login.php");
+    exit();
+}
+
 // --- เชื่อมต่อฐานข้อมูล ---
 $servername = "localhost";
 $username = "root";
@@ -17,43 +25,67 @@ if ($conn->connect_error) {
 // 1. ลบข้อมูล
 if (isset($_GET['delete_id'])) {
     $id = $_GET['delete_id'];
-    $stmt = $conn->prepare("DELETE FROM off_budget_status_changes WHERE id = ?");
+    // แก้ไขชื่อตารางให้ถูกต้อง
+    $sql = "DELETE FROM national_revenue_status_changes WHERE id = ?";
+    $stmt = $conn->prepare($sql);
+    
+    // เช็ค Error หาก Database หาตารางไม่เจอ
+    if ($stmt === false) {
+        die("Error preparing statement (DELETE): " . $conn->error . "<br>กรุณาตรวจสอบว่ามีตาราง national_revenue_status_changes ในฐานข้อมูลแล้วหรือไม่");
+    }
+
     $stmt->bind_param("i", $id);
     $stmt->execute();
-    // Redirect กลับมาหน้าเดิม
-    header("Location: " . $_SERVER['PHP_SELF']);
+    header("Location: National_revenue.php");
     exit();
 }
 
 // 2. เพิ่ม หรือ แก้ไขข้อมูล
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $change_order = $_POST['change_order']; // i (integer)
-    $doc_date = $_POST['doc_date'];         // s (string/date)
-    $doc_no = $_POST['doc_no'];             // s (string)
-    $description = $_POST['description'];   // s (string)
-    $change_type = $_POST['change_type'];   // s (string)
-    $amount = $_POST['amount'];             // d (double)
+    $change_order = $_POST['change_order'];
+    $doc_date = $_POST['doc_date'];
+    $doc_no = $_POST['doc_no'];
+    $description = $_POST['description'];
+    $change_type = $_POST['change_type'];
+    $amount = $_POST['amount'];
 
     if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        $stmt = $conn->prepare("INSERT INTO off_budget_status_changes (change_order, doc_date, doc_no, description, change_type, amount) VALUES (?, ?, ?, ?, ?, ?)");
-        // แก้ไข: ตรวจสอบจำนวนตัวแปรให้ครบ 6 ตัว (i, s, s, s, s, d)
+        $sql = "INSERT INTO national_revenue_status_changes (change_order, doc_date, doc_no, description, change_type, amount) VALUES (?, ?, ?, ?, ?, ?)";
+        $stmt = $conn->prepare($sql);
+        
+        // เช็ค Error
+        if ($stmt === false) {
+            die("Error preparing statement (INSERT): " . $conn->error . "<br>กรุณาตรวจสอบว่ามีตาราง national_revenue_status_changes ในฐานข้อมูลแล้วหรือไม่");
+        }
+
         $stmt->bind_param("issssd", $change_order, $doc_date, $doc_no, $description, $change_type, $amount);
         $stmt->execute();
+
     } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
-        $id = $_POST['edit_id']; // i (integer)
-        $stmt = $conn->prepare("UPDATE off_budget_status_changes SET change_order=?, doc_date=?, doc_no=?, description=?, change_type=?, amount=? WHERE id=?");
-        // แก้ไข: ตรวจสอบจำนวนตัวแปรให้ครบ 7 ตัว (i, s, s, s, s, d, i) - ตัวสุดท้ายคือ id สำหรับ WHERE
+        $id = $_POST['edit_id'];
+        $sql = "UPDATE national_revenue_status_changes SET change_order=?, doc_date=?, doc_no=?, description=?, change_type=?, amount=? WHERE id=?";
+        $stmt = $conn->prepare($sql);
+
+        // เช็ค Error
+        if ($stmt === false) {
+            die("Error preparing statement (UPDATE): " . $conn->error);
+        }
+
         $stmt->bind_param("issssdi", $change_order, $doc_date, $doc_no, $description, $change_type, $amount, $id);
         $stmt->execute();
     }
-    // Redirect กลับมาหน้าเดิม
-    header("Location: " . $_SERVER['PHP_SELF']);
+    header("Location: National_revenue.php");
     exit();
 }
 
 // --- ดึงข้อมูล ---
-$sql_data = "SELECT * FROM off_budget_status_changes ORDER BY change_order ASC";
+$sql_data = "SELECT * FROM national_revenue_status_changes ORDER BY change_order ASC";
 $result_data = $conn->query($sql_data);
+
+// เช็คว่า Query ผ่านไหม
+if ($result_data === false) {
+    die("Error fetching data: " . $conn->error . "<br>กรุณาตรวจสอบว่ามีตาราง national_revenue_status_changes ในฐานข้อมูลแล้วหรือไม่");
+}
 
 // ฟังก์ชันวันที่ไทยย่อ
 function thai_date_short($date_str) {
@@ -77,8 +109,6 @@ function thai_date_full($timestamp) {
 
 // *** เช็คหน้าปัจจุบัน ***
 $current_page = basename($_SERVER['PHP_SELF']);
-// หมายเหตุ: ชื่อไฟล์มีเว้นวรรค
-$current_page_encoded = urlencode('Off-budget funds.php');
 ?>
 
 <!DOCTYPE html>
@@ -86,7 +116,7 @@ $current_page_encoded = urlencode('Off-budget funds.php');
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ทะเบียนการเปลี่ยนแปลงสถานะเงินนอกงบประมาณ - AMSS++</title>
+    <title>ทะเบียนการเปลี่ยนแปลงสถานะเงินรายได้แผ่นดิน - AMSS++</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -109,6 +139,22 @@ $current_page_encoded = urlencode('Off-budget funds.php');
         }
         
         .top-header { background-color: var(--primary-dark); color: white; padding: 10px 20px; }
+        
+        /* User Info & Logout Button Styles */
+        .user-info { font-size: 0.9rem; text-align: right; }
+        .user-role { color: var(--accent-yellow); font-weight: 700; text-transform: uppercase; }
+        .btn-logout {
+            color: #ff6b6b;
+            text-decoration: none;
+            margin-left: 10px;
+            font-size: 0.85rem;
+            border: 1px solid #ff6b6b;
+            padding: 2px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .btn-logout:hover { background-color: #ff6b6b; color: white; }
+
         .sub-header { background: linear-gradient(90deg, var(--accent-yellow) 0%, var(--accent-gold) 100%); padding: 8px 20px; font-weight: 700; color: var(--primary-dark); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .navbar-custom { background-color: var(--menu-bg); padding: 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         
@@ -123,11 +169,11 @@ $current_page_encoded = urlencode('Off-budget funds.php');
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
         
-        /* Dropdown item active color fix (White) */
+        /* Dropdown item active color fix (Bold & Black) */
         .dropdown-item.active, .dropdown-item:active {
             background-color: white; 
-            color: var(--primary-dark);
-            font-weight: 500;
+            color: black !important; /* บังคับตัวหนังสือสีดำ */
+            font-weight: bold !important; /* บังคับตัวหนา */
         }
 
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
@@ -153,7 +199,7 @@ $current_page_encoded = urlencode('Off-budget funds.php');
             background-color: white !important;
         }
         
-        /* ยกเลิก Striped */
+        /* Cancel Striped */
         .table-striped > tbody > tr:nth-of-type(odd) > * { --bs-table-accent-bg: transparent; }
         .table-striped > tbody > tr:nth-of-type(even) > * { --bs-table-accent-bg: transparent; }
         
@@ -181,9 +227,16 @@ $current_page_encoded = urlencode('Off-budget funds.php');
 
     <div class="top-header d-flex justify-content-between align-items-center">
         <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
-        <div class="text-end small">
-            ผู้ใช้ : สมชาย นิลสุวรรณ (**Administrator**)<br>
-            <?php echo thai_date_full(time()); ?>
+        
+        <div class="user-info">
+            <div>
+                ผู้ใช้ : <?php echo htmlspecialchars($_SESSION['fullname']); ?> 
+                (<span class="user-role">**<?php echo $_SESSION['role']; ?>**</span>)
+                <a href="Logout.php" class="btn-logout" onclick="return confirm('ยืนยันออกจากระบบ?');">
+                    <i class="fa-solid fa-power-off"></i> ออก
+                </a>
+            </div>
+            <small class="text-white-50"><?php echo thai_date_full(time()); ?></small>
         </div>
     </div>
 
@@ -194,7 +247,7 @@ $current_page_encoded = urlencode('Off-budget funds.php');
             <a href="index.php" class="nav-link-custom">รายการหลัก</a>
             
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['officers.php', 'yearbudget.php', 'plan.php', 'Projectoutcomes.php', 'Activity.php', 'Sourcemoney.php', 'Expensesbudget.php', 'Mainmoney.php', 'Subtypesmoney.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
                     <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
@@ -209,7 +262,7 @@ $current_page_encoded = urlencode('Off-budget funds.php');
             </div>
             
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Budgetallocation.php', 'Receivebudget.php', 'Receiveoffbudget.php', 'Receivenational.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ทะเบียนรับ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนรับ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budgetallocation.php">รับการจัดสรรงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Receivebudget.php">รับเงินงบประมาณ</a></li>
@@ -219,7 +272,7 @@ $current_page_encoded = urlencode('Off-budget funds.php');
             </div>
 
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['RequestforWithdrawalProjectLoan.php', 'ProjectRefundRegistration.php', 'TreasuryWithdrawal.php', 'TreasuryRefundRegister.php', 'Withdrawtheappeal.php', 'Fundrolloverregister.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ทะเบียนขอเบิก</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนขอเบิก</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="RequestforWithdrawalProjectLoan.php">ทะเบียนขอเบิก/ขอยืมเงินโครงการ</a></li>
                     <li><a class="dropdown-item" href="ProjectRefundRegistration.php">***ทะเบียนคืนเงินโครงการ</a></li>
@@ -231,7 +284,7 @@ $current_page_encoded = urlencode('Off-budget funds.php');
             </div>
 
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Authorizebudgetexpenditures.php', 'Orderpaymentoutsidethebudget.php', 'Orderpaymentofstaterevenue.php', 'Governmentadvancefunds.php', 'Approvedformaintypepayment.php', 'Approved for governmentadvancepayment.php', 'Major type of payment.php', 'Advance payment for government service.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ทะเบียนจ่าย</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนจ่าย</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Authorizebudgetexpenditures.php">สั่งจ่ายเงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Orderpaymentoutsidethebudget.php">สั่งจ่ายเงินนอกงบประมาณ</a></li>
@@ -244,15 +297,15 @@ $current_page_encoded = urlencode('Off-budget funds.php');
                 </ul>
             </div>
 
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (strpos(urldecode($current_page), 'Off-budget funds.php') !== false || in_array($current_page, ['Budget.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
+             <div class="dropdown">
+                <a href="#" class="nav-link-custom dropdown-toggle active" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
-                    <li><a class="dropdown-item active" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="Off_budget_funds.php">เงินนอกงบประมาณ</a></li>
+                    <li><a class="dropdown-item active" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
-
+            
             <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตรวจสอบ</a>
                 <ul class="dropdown-menu">
@@ -267,6 +320,7 @@ $current_page_encoded = urlencode('Off-budget funds.php');
                     <li><a class="dropdown-item" href="Requisition items with incorrect installment vouchers.php">รายการขอเบิกฯที่วางฎีกาผิดใบงวด</a></li>
                 </ul>
             </div>
+
             <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">รายงาน</a>
                 <ul class="dropdown-menu">
@@ -283,6 +337,7 @@ $current_page_encoded = urlencode('Off-budget funds.php');
                     <li><a class="dropdown-item" href="Loan Report.php">รายงานลูกหนี้เงินยืม</a></li>
                 </ul>
             </div>
+
             <a href="#" class="nav-link-custom ms-auto">คู่มือ</a>
         </div>
     </div>
@@ -290,7 +345,7 @@ $current_page_encoded = urlencode('Off-budget funds.php');
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">ทะเบียนการเปลี่ยนแปลงสถานะเงินนอกงบประมาณ ปีงบประมาณ 2568</h2>
+            <h2 class="page-title">ทะเบียนการเปลี่ยนแปลงสถานะเงินรายได้แผ่นดิน ปีงบประมาณ 2568</h2>
 
             <div class="d-flex align-items-center mb-2">
                 <button class="btn btn-add" onclick="openAddModal()">
@@ -315,7 +370,7 @@ $current_page_encoded = urlencode('Off-budget funds.php');
                     </thead>
                     <tbody>
                         <?php 
-                        if ($result_data->num_rows > 0) {
+                        if (isset($result_data) && $result_data && $result_data->num_rows > 0) {
                             while($row = $result_data->fetch_assoc()) {
                                 
                                 echo "<tr>";
@@ -362,7 +417,7 @@ $current_page_encoded = urlencode('Off-budget funds.php');
                     <h5 class="modal-title-custom" id="modalTitle">บันทึกการเปลี่ยนแปลงสถานะ</h5>
                 </div>
                 <div class="modal-body form-yellow-bg mx-3 mb-3">
-                    <form action="" method="POST">
+                    <form action="National_revenue.php" method="POST">
                         <input type="hidden" name="action" id="form_action" value="add">
                         <input type="hidden" name="edit_id" id="edit_id">
 

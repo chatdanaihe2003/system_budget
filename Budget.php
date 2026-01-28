@@ -273,7 +273,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <a href="#" class="nav-link-custom active dropdown-toggle" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item active" href="Budget.php">เงินงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Off_budget_funds.php">เงินนอกงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
