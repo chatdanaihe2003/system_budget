@@ -138,6 +138,12 @@ $current_page = basename($_SERVER['PHP_SELF']);
         
         .modal-header { background-color: var(--primary-dark); color: white; }
         .btn-close { filter: invert(1); }
+          /* [แก้ไข] เพิ่มสไตล์สำหรับเมนู Active ให้เป็นตัวหนาสีดำ */
+        .dropdown-item.active, .dropdown-item:active {
+            background-color: white; 
+            color: black !important; /* บังคับตัวหนังสือสีดำ */
+            font-weight: bold !important; /* บังคับตัวหนา */
+        }
 
         /* User Info & Logout Button Styles */
         .user-info { font-size: 0.9rem; text-align: right; }
@@ -183,7 +189,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
                     <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="plan.php">แผนงาน</a></li>
+                    <li><a class="dropdown-item <?php echo ($current_page == 'plan.php') ? 'active' : ''; ?>" href="plan.php">แผนงาน</a></li>
                     <li><a class="dropdown-item" href="Projectoutcomes.php">ผลผลิตโครงการ</a></li>
                     <li><a class="dropdown-item" href="Activity.php">กิจกรรมหลัก</a></li>
                     <li><a class="dropdown-item" href="Sourcemoney.php">แหล่งของเงิน</a></li>

@@ -25,39 +25,41 @@ if ($conn->connect_error) {
 // 1. ลบข้อมูล
 if (isset($_GET['delete_id'])) {
     $id = $_GET['delete_id'];
-    $stmt = $conn->prepare("DELETE FROM project_refunds WHERE id = ?");
+    // ** ตรวจสอบชื่อตารางในฐานข้อมูลของคุณ (เช่น project_withdrawals หรือ project_loans) **
+    $stmt = $conn->prepare("DELETE FROM project_withdrawals WHERE id = ?");
     $stmt->bind_param("i", $id);
     $stmt->execute();
-    header("Location: ProjectRefundRegistration.php");
+    header("Location: RequestforWithdrawalProjectLoan.php");
     exit();
 }
 
 // 2. เพิ่ม หรือ แก้ไขข้อมูล
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $refund_order = $_POST['refund_order'];
+    $withdrawal_order = $_POST['withdrawal_order'];
     $doc_date = $_POST['doc_date'];
     $doc_no = $_POST['doc_no'];
     $description = $_POST['description'];
     $amount = $_POST['amount'];
     
-    $is_other_officer = 0; 
-
+    // ** ตรวจสอบชื่อตารางให้ตรงกับ DB ของคุณ **
     if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        $stmt = $conn->prepare("INSERT INTO project_refunds (refund_order, doc_date, doc_no, description, amount, is_other_officer) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("isssdi", $refund_order, $doc_date, $doc_no, $description, $amount, $is_other_officer);
+        $stmt = $conn->prepare("INSERT INTO project_withdrawals (withdrawal_order, doc_date, doc_no, description, amount) VALUES (?, ?, ?, ?, ?)");
+        $stmt->bind_param("isssd", $withdrawal_order, $doc_date, $doc_no, $description, $amount);
         $stmt->execute();
     } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
         $id = $_POST['edit_id'];
-        $stmt = $conn->prepare("UPDATE project_refunds SET refund_order=?, doc_date=?, doc_no=?, description=?, amount=? WHERE id=?");
-        $stmt->bind_param("isssdi", $refund_order, $doc_date, $doc_no, $description, $amount, $id);
+        $stmt = $conn->prepare("UPDATE project_withdrawals SET withdrawal_order=?, doc_date=?, doc_no=?, description=?, amount=? WHERE id=?");
+        $stmt->bind_param("isssdi", $withdrawal_order, $doc_date, $doc_no, $description, $amount, $id);
         $stmt->execute();
     }
-    header("Location: ProjectRefundRegistration.php");
+    header("Location: RequestforWithdrawalProjectLoan.php");
     exit();
 }
 
 // --- ดึงข้อมูล ---
-$sql_data = "SELECT * FROM project_refunds ORDER BY refund_order ASC";
+// ** ตรวจสอบชื่อตารางให้ตรงกับ DB ของคุณ **
+// หากยังไม่ได้สร้างตาราง project_withdrawals โค้ดนี้จะ Error ให้สร้างตารางก่อนนะครับ
+$sql_data = "SELECT * FROM project_withdrawals ORDER BY withdrawal_order ASC";
 $result_data = $conn->query($sql_data);
 
 $total_amount = 0; 
@@ -91,7 +93,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ทะเบียนคืนเงินโครงการ - AMSS++</title>
+    <title>ทะเบียนขอเบิก/ขอยืมเงินโครงการ - AMSS++</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -104,7 +106,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             --accent-gold: #c59d0a;
             --bg-light: #f4f7f6;
             --menu-bg: #212529;
-            --header-olive: #8B8000; /* สีทองเข้ม Olive เหมือนในภาพ */
+            --header-olive: #8B8000; /* สีทองเข้ม/Olive */
         }
         body {
             font-family: 'Sarabun', sans-serif;
@@ -120,18 +122,18 @@ $current_page = basename($_SERVER['PHP_SELF']);
         .nav-link-custom { color: #aaa; padding: 12px 20px; text-decoration: none; display: inline-block; transition: all 0.3s; border-bottom: 3px solid transparent; font-size: 0.95rem; }
         .nav-link-custom:hover, .nav-link-custom.active { 
             color: #fff; 
-            background-color: #333; /* พื้นหลังเทาเข้ม */
-            border-bottom-color: var(--accent-yellow); /* เส้นใต้เหลือง */
+            background-color: #333; 
+            border-bottom-color: var(--accent-yellow); 
         }
         
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
         
-        /* Override Active Dropdown to be White (No Blue) */
+        /* [แก้ไข] ปรับสไตล์เมนู Active ให้เป็นตัวหนา สีดำ */
         .dropdown-item.active, .dropdown-item:active {
             background-color: white; 
-            color: var(--primary-dark);
-            font-weight: 500;
+            color: black !important; /* สีดำ */
+            font-weight: bold !important; /* ตัวหนา */
         }
 
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
@@ -155,7 +157,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             border-bottom: 1px solid #f0f0f0; 
             padding: 10px; 
             font-size: 0.85rem; 
-            background-color: white !important; /* พื้นหลังขาวล้วน ไม่สลับสี */
+            background-color: white !important;
         }
         
         /* ยกเลิก Striped */
@@ -188,8 +190,6 @@ $current_page = basename($_SERVER['PHP_SELF']);
         .modal-header { background-color: transparent; border-bottom: none; }
         .modal-title-custom { color: #008080; font-weight: bold; width: 100%; text-align: center; font-size: 1.3rem;}
         
-        .total-text { color: #000; font-weight: bold; font-size: 0.8rem;}
-
         /* User Info & Logout Button Styles */
         .user-info { font-size: 0.9rem; text-align: right; }
         .user-role { color: var(--accent-yellow); font-weight: 700; text-transform: uppercase; }
@@ -223,14 +223,14 @@ $current_page = basename($_SERVER['PHP_SELF']);
         </div>
         </div>
 
-    <div class="sub-header">ทะเบียนคืนเงินโครงการ</div>
+    <div class="sub-header">ทะเบียนขอเบิก/ขอยืมเงินโครงการ</div>
 
     <div class="navbar-custom">
         <div class="container-fluid d-flex flex-wrap">
             <a href="index.php" class="nav-link-custom">รายการหลัก</a>
             
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['officers.php', 'yearbudget.php', 'plan.php', 'Projectoutcomes.php', 'Activity.php', 'Sourcemoney.php', 'Expensesbudget.php', 'Mainmoney.php', 'Subtypesmoney.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
                     <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
@@ -257,7 +257,9 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <div class="dropdown">
                 <a href="#" class="nav-link-custom active dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนขอเบิก</a>
                 <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="RequestforWithdrawalProjectLoan.php">ทะเบียนขอเบิก/ขอยืมเงินโครงการ</a></li>
+                    
+                    <li><a class="dropdown-item <?php echo ($current_page == 'RequestforWithdrawalProjectLoan.php') ? 'active' : ''; ?>" href="RequestforWithdrawalProjectLoan.php">ทะเบียนขอเบิก/ขอยืมเงินโครงการ</a></li>
+                    
                     <li><a class="dropdown-item" href="ProjectRefundRegistration.php">***ทะเบียนคืนเงินโครงการ</a></li>
                     <li><a class="dropdown-item" href="TreasuryWithdrawal.php">ทะเบียนขอเบิกเงินคงคลัง</a></li>
                     <li><a class="dropdown-item" href="TreasuryRefundRegister.php">***ทะเบียนคืนเงินคงคลัง</a></li>
@@ -285,7 +287,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
             
@@ -328,7 +330,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">ทะเบียนคืนเงินโครงการ ปีงบประมาณ 2568</h2>
+            <h2 class="page-title">ทะเบียนขอเบิก/ขอยืมเงินโครงการ ปีงบประมาณ 2568</h2>
 
             <div class="d-flex justify-content-end mb-3">
                 <button class="btn btn-add" onclick="openAddModal()">
@@ -350,17 +352,15 @@ $current_page = basename($_SERVER['PHP_SELF']);
                     </thead>
                     <tbody>
                         <?php 
-                        if ($result_data->num_rows > 0) {
+                        if ($result_data && $result_data->num_rows > 0) {
                             while($row = $result_data->fetch_assoc()) {
                                 $total_amount += $row['amount'];
                                 
                                 echo "<tr>";
-                                echo "<td class='td-center'>" . $row['refund_order'] . "</td>";
+                                echo "<td class='td-center'>" . $row['withdrawal_order'] . "</td>";
                                 echo "<td class='td-center'>" . thai_date_short($row['doc_date']) . "</td>";
                                 echo "<td class='td-left'>" . $row['doc_no'] . "</td>";
-                                echo "<td class='td-left'>" . $row['description'];
-                                if($row['is_other_officer']) echo ' <i class="fa-solid fa-triangle-exclamation text-danger"></i>';
-                                echo "</td>";
+                                echo "<td class='td-left'>" . $row['description'] . "</td>";
                                 echo "<td class='td-right'>" . number_format($row['amount'], 2) . "</td>";
                                 
                                 // ปุ่มจัดการ (ลบ/แก้ไข)
@@ -394,17 +394,17 @@ $current_page = basename($_SERVER['PHP_SELF']);
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header d-block">
-                    <h5 class="modal-title-custom" id="modalTitle">ลงทะเบียน คืนเงินโครงการ ปีงบประมาณ 2568</h5>
+                    <h5 class="modal-title-custom" id="modalTitle">ลงทะเบียน ขอเบิก/ขอยืมเงินโครงการ ปีงบประมาณ 2568</h5>
                 </div>
                 <div class="modal-body form-yellow-bg mx-3 mb-3">
-                    <form action="ProjectRefundRegistration.php" method="POST">
+                    <form action="RequestforWithdrawalProjectLoan.php" method="POST">
                         <input type="hidden" name="action" id="form_action" value="add">
                         <input type="hidden" name="edit_id" id="edit_id">
 
                         <div class="row mb-2">
                             <div class="col-md-3 form-label-custom">ที่</div>
                             <div class="col-md-2">
-                                <input type="number" name="refund_order" id="refund_order" class="form-control form-control-sm" required>
+                                <input type="number" name="withdrawal_order" id="withdrawal_order" class="form-control form-control-sm" required>
                             </div>
                         </div>
 
@@ -452,7 +452,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
         function openAddModal() {
             document.getElementById('form_action').value = 'add';
             document.getElementById('edit_id').value = '';
-            document.getElementById('modalTitle').innerHTML = 'ลงทะเบียน คืนเงินโครงการ ปีงบประมาณ 2568';
+            document.getElementById('modalTitle').innerHTML = 'ลงทะเบียน ขอเบิก/ขอยืมเงินโครงการ ปีงบประมาณ 2568';
             document.querySelector('form').reset();
             
             var myModal = new bootstrap.Modal(document.getElementById('addModal'));
@@ -462,9 +462,9 @@ $current_page = basename($_SERVER['PHP_SELF']);
         function openEditModal(data) {
             document.getElementById('form_action').value = 'edit';
             document.getElementById('edit_id').value = data.id;
-            document.getElementById('modalTitle').innerHTML = 'แก้ไข คืนเงินโครงการ';
+            document.getElementById('modalTitle').innerHTML = 'แก้ไข ขอเบิก/ขอยืมเงินโครงการ';
             
-            document.getElementById('refund_order').value = data.refund_order;
+            document.getElementById('withdrawal_order').value = data.withdrawal_order;
             document.getElementById('doc_date').value = data.doc_date;
             document.getElementById('doc_no').value = data.doc_no;
             document.getElementById('description').value = data.description;

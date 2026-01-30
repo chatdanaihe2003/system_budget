@@ -110,6 +110,13 @@ $current_page = basename($_SERVER['PHP_SELF']);
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
         
+        /* [แก้ไข] เพิ่มสไตล์สำหรับเมนู Active ให้เป็นตัวหนาสีดำ */
+        .dropdown-item.active, .dropdown-item:active {
+            background-color: white; 
+            color: black !important; /* บังคับตัวหนังสือสีดำ */
+            font-weight: bold !important; /* บังคับตัวหนา */
+        }
+        
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
         .page-title { color: #d63384; font-weight: 700; text-align: center; margin-bottom: 25px; font-size: 1.6rem; }
         
@@ -187,7 +194,9 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <a href="#" class="nav-link-custom active dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
-                    <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
+                    
+                    <li><a class="dropdown-item <?php echo ($current_page == 'yearbudget.php') ? 'active' : ''; ?>" href="yearbudget.php">ปีงบประมาณ</a></li>
+                    
                     <li><a class="dropdown-item" href="plan.php">แผนงาน</a></li>
                     <li><a class="dropdown-item" href="Projectoutcomes.php">ผลผลิตโครงการ</a></li>
                     <li><a class="dropdown-item" href="Activity.php">กิจกรรมหลัก</a></li>
@@ -239,7 +248,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
             
@@ -327,8 +336,8 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                 echo '<td>';
                                 echo '<a href="?delete_id='.$row['id'].'" class="action-btn btn-delete" onclick="return confirm(\'คุณต้องการลบข้อมูลปี '.$row['budget_year'].' หรือไม่?\')" title="ลบ"><i class="fa-solid fa-trash-can"></i></a>';
                                 echo '<button class="action-btn btn-edit" title="แก้ไข" 
-                                        onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
-                                        <i class="fa-solid fa-pen-to-square"></i>
+                                            onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
+                                            <i class="fa-solid fa-pen-to-square"></i>
                                       </button>';
                                 echo '</td>';
                                 echo "</tr>";

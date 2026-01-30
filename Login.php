@@ -52,7 +52,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <title>เข้าสู่ระบบ - AMSS++</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
     <style>
         :root {
             --primary-dark: #0A192F;
@@ -60,7 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             --bg-light: #f4f7f6;
         }
         body {
-            font-family: 'Sarabun', sans-serif;
+            /* เรียกใช้ฟอนต์ Kanit */
+            font-family: 'Kanit', sans-serif;
             background-color: var(--bg-light);
             height: 100vh;
             display: flex;
@@ -83,25 +88,33 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             text-align: center;
         }
         .login-header i { font-size: 3rem; color: var(--accent-yellow); margin-bottom: 10px; }
-        .login-header h3 { font-weight: 700; margin: 0; font-size: 1.6rem; }
+        .login-header h3 { font-weight: 600; margin: 0; font-size: 1.6rem; letter-spacing: 0.5px; }
+        .login-header h6 { font-weight: 300; margin-top: 5px; opacity: 0.9; }
+        .login-header small { font-weight: 300; opacity: 0.7; }
+        
         .login-body { padding: 30px; }
-        .form-control { border-radius: 5px; padding: 12px; }
+        
+        .form-control { border-radius: 5px; padding: 12px; font-weight: 300; }
         .form-control:focus { border-color: var(--accent-yellow); box-shadow: 0 0 0 0.2rem rgba(255, 193, 7, 0.25); }
+        
         .btn-login {
             background-color: var(--primary-dark);
             color: white;
             width: 100%;
             padding: 12px;
-            font-weight: bold;
+            font-weight: 500; /* ปรับความหนาให้เข้ากับฟอนต์ */
             border: none;
             border-radius: 5px;
             transition: 0.3s;
-            font-size: 1rem;
+            font-size: 1.1rem;
         }
         .btn-login:hover { background-color: #152a45; color: var(--accent-yellow); }
-        .register-link { text-align: center; margin-top: 20px; font-size: 0.9rem; }
-        .register-link a { color: var(--primary-dark); text-decoration: none; font-weight: 600; }
+        
+        .register-link { text-align: center; margin-top: 20px; font-size: 0.9rem; font-weight: 300; }
+        .register-link a { color: var(--primary-dark); text-decoration: none; font-weight: 500; }
         .register-link a:hover { text-decoration: underline; color: #d63384; }
+        
+        .form-label { font-weight: 400; }
     </style>
 </head>
 <body>
@@ -109,11 +122,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <div class="login-card">
         <div class="login-header">
             <i class="fa-solid fa-coins"></i>
-            <h3>AMSS++</h3>
+            <h3>Budget control system</h3>
+            <h6>ระบบบริหารจัดการงบประมาณ</h6>
             <small>สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</small>
         </div>
         <div class="login-body">
-            <h4 class="text-center mb-4 fw-bold text-secondary">เข้าสู่ระบบ</h4>
+            <h4 class="text-center mb-4 text-secondary" style="font-weight: 600;">เข้าสู่ระบบ</h4>
             
             <?php if($error_msg): ?>
                 <div class="alert alert-danger py-2 text-center small">

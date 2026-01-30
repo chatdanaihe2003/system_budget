@@ -166,6 +166,13 @@ $current_page = basename($_SERVER['PHP_SELF']);
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
         
+        /* [แก้ไข] เพิ่มสไตล์สำหรับเมนู Active ให้เป็นตัวหนาสีดำ */
+        .dropdown-item.active, .dropdown-item:active {
+            background-color: white; 
+            color: black !important; /* บังคับตัวหนังสือสีดำ */
+            font-weight: bold !important; /* บังคับตัวหนา */
+        }
+        
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
         
         /* Title Color like Image (Pink/Purple) */
@@ -249,10 +256,10 @@ $current_page = basename($_SERVER['PHP_SELF']);
 
     <div class="navbar-custom">
         <div class="container-fluid d-flex flex-wrap">
-            <a href="index.php" class="nav-link-custom <?php echo ($current_page == 'index.php') ? 'active' : ''; ?>">รายการหลัก</a>
+            <a href="index.php" class="nav-link-custom">รายการหลัก</a>
             
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['officers.php', 'yearbudget.php', 'plan.php', 'Projectoutcomes.php', 'Activity.php', 'Sourcemoney.php', 'Expensesbudget.php', 'Mainmoney.php', 'Subtypesmoney.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
                     <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
@@ -270,7 +277,9 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <a href="#" class="nav-link-custom active dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนรับ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budgetallocation.php">รับการจัดสรรงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Receivebudget.php">รับเงินงบประมาณ</a></li>
+                    
+                    <li><a class="dropdown-item <?php echo ($current_page == 'Receivebudget.php') ? 'active' : ''; ?>" href="Receivebudget.php">รับเงินงบประมาณ</a></li>
+                    
                     <li><a class="dropdown-item" href="Receiveoffbudget.php">รับเงินนอกงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Receivenational.php">รับเงินรายได้แผ่นดิน</a></li>
                 </ul>
@@ -307,7 +316,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
             
@@ -392,7 +401,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                 // ปุ่มรายละเอียด
                                 echo "<td class='td-center'>";
                                 echo '<button class="action-btn" title="รายละเอียด" onclick="openDetailModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
-                                        <i class="fa-regular fa-rectangle-list"></i>
+                                            <i class="fa-regular fa-rectangle-list"></i>
                                       </button>';
                                 echo "</td>";
 
@@ -402,7 +411,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                     echo '<a href="uploads/'.$row['file_name'].'" target="_blank" class="action-btn btn-file" title="ดาวน์โหลดไฟล์"><i class="fa-solid fa-arrow-up-from-bracket"></i></a>';
                                 } else {
                                     echo '<button class="action-btn btn-file" title="คลิกเพื่อแนบไฟล์" onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
-                                            <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                                              <i class="fa-solid fa-arrow-up-from-bracket"></i>
                                           </button>';
                                 }
                                 echo "</td>";

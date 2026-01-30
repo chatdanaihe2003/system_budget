@@ -53,10 +53,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>สมัครสมาชิก - AMSS++</title>
+    <title>สมัครสมาชิก - Budget control system</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
     <style>
         :root {
             --primary-dark: #0A192F;
@@ -64,7 +68,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             --bg-light: #f4f7f6;
         }
         body {
-            font-family: 'Sarabun', sans-serif;
+            /* เรียกใช้ฟอนต์ Kanit */
+            font-family: 'Kanit', sans-serif;
             background-color: var(--bg-light);
             height: 100vh;
             display: flex;
@@ -86,36 +91,42 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             padding: 25px;
             text-align: center;
         }
-        .register-header h3 { font-weight: 700; margin: 0; font-size: 1.5rem; }
-        .register-header p { margin: 5px 0 0; opacity: 0.8; font-size: 0.9rem; }
+        .register-header h3 { font-weight: 600; margin: 0; font-size: 1.5rem; letter-spacing: 0.5px; }
+        .register-header p { margin: 5px 0 0; opacity: 0.8; font-size: 0.9rem; font-weight: 300; }
+        
         .register-body { padding: 30px; }
-        .form-control { border-radius: 5px; padding: 10px; }
+        
+        .form-control { border-radius: 5px; padding: 10px; font-weight: 300; }
         .form-control:focus { border-color: var(--accent-yellow); box-shadow: 0 0 0 0.2rem rgba(255, 193, 7, 0.25); }
+        
         .btn-register {
             background-color: var(--primary-dark);
             color: white;
             width: 100%;
             padding: 10px;
-            font-weight: bold;
+            font-weight: 500;
             border: none;
             border-radius: 5px;
             transition: 0.3s;
         }
         .btn-register:hover { background-color: #152a45; color: var(--accent-yellow); }
-        .login-link { text-align: center; margin-top: 15px; font-size: 0.9rem; }
-        .login-link a { color: var(--primary-dark); text-decoration: none; font-weight: 600; }
+        
+        .login-link { text-align: center; margin-top: 15px; font-size: 0.9rem; font-weight: 300; }
+        .login-link a { color: var(--primary-dark); text-decoration: none; font-weight: 500; }
         .login-link a:hover { text-decoration: underline; color: #d63384; }
+        
+        .form-label { font-weight: 400; }
     </style>
 </head>
 <body>
 
     <div class="register-card">
         <div class="register-header">
-            <h3>AMSS++</h3>
+            <h3>Budget control system</h3>
             <p>ระบบบริหารจัดการงบประมาณ</p>
         </div>
         <div class="register-body">
-            <h4 class="text-center mb-4" style="color: #555;">สมัครสมาชิกใหม่</h4>
+            <h4 class="text-center mb-4 text-secondary" style="font-weight: 600;">สมัครสมาชิกใหม่</h4>
             
             <?php if($error_msg): ?>
                 <div class="alert alert-danger py-2 text-center small"><?php echo $error_msg; ?></div>
@@ -124,7 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <?php if($success_msg): ?>
                 <div class="alert alert-success py-2 text-center small">
                     <?php echo $success_msg; ?> <br>
-                    <a href="Login.php" class="alert-link">คลิกที่นี่เพื่อเข้าสู่ระบบ</a>
+                    <a href="Login.php" class="alert-link fw-bold">คลิกที่นี่เพื่อเข้าสู่ระบบ</a>
                 </div>
             <?php endif; ?>
 

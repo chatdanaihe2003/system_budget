@@ -142,6 +142,13 @@ $current_page = basename($_SERVER['PHP_SELF']);
         .dropdown-item { padding: 10px 20px; font-size: 0.9rem; }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
         
+        /* --- [แก้ไข] ปรับแต่ง CSS สำหรับเมนู Active ให้เป็นตัวหนาและสีดำ --- */
+        .dropdown-item.active, .dropdown-item:active {
+            background-color: white; 
+            color: black !important; /* บังคับตัวหนังสือสีดำ */
+            font-weight: bold !important; /* บังคับตัวหนา */
+        }
+        
         .content-card { 
             background: white; 
             border-radius: 8px; 
@@ -240,7 +247,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <div class="dropdown">
                 <a href="#" class="nav-link-custom active dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
                 <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
+                    <li><a class="dropdown-item <?php echo ($current_page == 'officers.php') ? 'active' : ''; ?>" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
                     <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="plan.php">แผนงาน</a></li>
                     <li><a class="dropdown-item" href="Projectoutcomes.php">ผลผลิตโครงการ</a></li>
@@ -293,7 +300,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
             
@@ -386,9 +393,9 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                 echo '<td>';
                                 echo '<a href="?delete_id='.$row['id'].'" class="action-btn btn-delete" onclick="return confirm(\'คุณต้องการลบข้อมูลนี้หรือไม่?\')" title="ลบ"><i class="fa-solid fa-trash-can"></i></a>';
                                 echo '<button class="action-btn btn-edit" title="แก้ไข" 
-                                        onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
-                                        <i class="fa-solid fa-pen-to-square"></i>
-                                      </button>';
+                                            onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
+                                            <i class="fa-solid fa-pen-to-square"></i>
+                                          </button>';
                                 echo '</td>';
                                 echo "</tr>";
                             }

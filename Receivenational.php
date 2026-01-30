@@ -153,6 +153,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             color: #333;
         }
         
+        /* Header & Nav */
         .top-header { background-color: var(--primary-dark); color: white; padding: 10px 20px; }
         .sub-header { background: linear-gradient(90deg, var(--accent-yellow) 0%, var(--accent-gold) 100%); padding: 8px 20px; font-weight: 700; color: var(--primary-dark); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .navbar-custom { background-color: var(--menu-bg); padding: 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -161,14 +162,23 @@ $current_page = basename($_SERVER['PHP_SELF']);
         .nav-link-custom { color: #aaa; padding: 12px 20px; text-decoration: none; display: inline-block; transition: all 0.3s; border-bottom: 3px solid transparent; font-size: 0.95rem; }
         .nav-link-custom:hover, .nav-link-custom.active { 
             color: #fff; 
-            background-color: #333; /* พื้นหลังเทาเข้ม */
-            border-bottom-color: var(--accent-yellow); /* เส้นใต้เหลือง */
+            background-color: #333; 
+            border-bottom-color: var(--accent-yellow); 
         }
         
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
         
+        /* [แก้ไข] เพิ่มสไตล์สำหรับเมนู Active ให้เป็นตัวหนาสีดำ */
+        .dropdown-item.active, .dropdown-item:active {
+            background-color: white; 
+            color: black !important; /* บังคับตัวหนังสือสีดำ */
+            font-weight: bold !important; /* บังคับตัวหนา */
+        }
+        
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
+        
+        /* Title Color like Image */
         .page-title { color: #d63384; font-weight: 700; text-align: center; margin-bottom: 25px; font-size: 1.4rem; }
         
         /* --- Table Styles (Gold/Olive Theme) --- */
@@ -186,12 +196,12 @@ $current_page = basename($_SERVER['PHP_SELF']);
             border-color: #eee; 
             padding: 8px; 
             font-size: 0.85rem; 
-            background-color: white !important; /* พื้นหลังขาว */
+            background-color: white; 
         }
         
         /* แถวรวมยอด (Footer Row) */
         .total-row {
-            background-color: #ffcccc !important; /* สีชมพูสำหรับแถวรวม */
+            background-color: #fff3cd !important; 
             font-weight: bold;
             color: #333;
         }
@@ -253,10 +263,10 @@ $current_page = basename($_SERVER['PHP_SELF']);
 
     <div class="navbar-custom">
         <div class="container-fluid d-flex flex-wrap">
-            <a href="index.php" class="nav-link-custom <?php echo ($current_page == 'index.php') ? 'active' : ''; ?>">รายการหลัก</a>
+            <a href="index.php" class="nav-link-custom">รายการหลัก</a>
             
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['officers.php', 'yearbudget.php', 'plan.php', 'Projectoutcomes.php', 'Activity.php', 'Sourcemoney.php', 'Expensesbudget.php', 'Mainmoney.php', 'Subtypesmoney.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
                     <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
@@ -271,12 +281,13 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </div>
             
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนรับ</a>
+                <a href="#" class="nav-link-custom active dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนรับ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budgetallocation.php">รับการจัดสรรงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Receivebudget.php">รับเงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Receiveoffbudget.php">รับเงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Receivenational.php">รับเงินรายได้แผ่นดิน</a></li>
+                    
+                    <li><a class="dropdown-item <?php echo ($current_page == 'Receivenational.php') ? 'active' : ''; ?>" href="Receivenational.php">รับเงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
 
@@ -311,7 +322,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
             
@@ -376,6 +387,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                             <th style="width: 4%;">File</th>
                             <th style="width: 4%;">ลบ</th>
                             <th style="width: 4%;">แก้ไข</th>
+                            <th style="width: 4%;">พิมพ์</th>
                             <th style="width: 4%;">รวม</th>
                         </tr>
                     </thead>
@@ -396,7 +408,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                 // ปุ่มรายละเอียด
                                 echo "<td class='td-center'>";
                                 echo '<button class="action-btn" title="รายละเอียด" onclick="openDetailModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
-                                        <i class="fa-regular fa-rectangle-list"></i>
+                                            <i class="fa-regular fa-rectangle-list"></i>
                                       </button>';
                                 echo "</td>";
 
@@ -406,7 +418,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                     echo '<a href="uploads/'.$row['file_name'].'" target="_blank" class="action-btn btn-file" title="ดาวน์โหลดไฟล์"><i class="fa-solid fa-arrow-up-from-bracket"></i></a>';
                                 } else {
                                     echo '<button class="action-btn btn-file" title="คลิกเพื่อแนบไฟล์" onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
-                                            <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                                              <i class="fa-solid fa-arrow-up-from-bracket"></i>
                                           </button>';
                                 }
                                 echo "</td>";
@@ -419,6 +431,11 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                 // ปุ่มแก้ไข
                                 echo "<td class='td-center'>";
                                 echo '<button class="action-btn btn-edit" title="แก้ไข" onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')"><i class="fa-solid fa-pen"></i></button>';
+                                echo "</td>";
+
+                                // ปุ่มพิมพ์
+                                echo "<td class='td-center'>";
+                                echo '<button class="action-btn btn-print" title="พิมพ์" onclick="printItem('.$row['id'].')"><i class="fa-solid fa-print"></i></button>';
                                 echo "</td>";
 
                                 // รวม
@@ -458,7 +475,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                     <div class="modal-body">
                         <div class="row mb-3">
                             <div class="col-md-4">
-                                <label class="form-label fw-bold">ที่</label>
+                                <label class="form-label fw-bold">ที่/งวด</label>
                                 <input type="number" name="receive_order" id="receive_order" class="form-control" required>
                             </div>
                             <div class="col-md-8">

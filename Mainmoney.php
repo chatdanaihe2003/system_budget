@@ -36,6 +36,9 @@ function thai_date($timestamp) {
     $y = date("Y", $timestamp) + 543;
     return "วัน" . $thai_day_arr[date("w", $timestamp)] . "ที่ $d $thai_month_arr[$m] พ.ศ. $y";
 }
+
+// *** เช็คหน้าปัจจุบัน ***
+$current_page = basename($_SERVER['PHP_SELF']);
 ?>
 
 <!DOCTYPE html>
@@ -71,6 +74,13 @@ function thai_date($timestamp) {
         .nav-link-custom:hover, .nav-link-custom.active { color: #fff; background-color: rgba(255,255,255,0.1); border-bottom-color: var(--accent-yellow); }
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
+        
+        /* [แก้ไข] เพิ่มสไตล์สำหรับเมนู Active ให้เป็นตัวหนาสีดำ */
+        .dropdown-item.active, .dropdown-item:active {
+            background-color: white; 
+            color: black !important; /* บังคับตัวหนังสือสีดำ */
+            font-weight: bold !important; /* บังคับตัวหนา */
+        }
         
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
         .page-title { color: #d63384; font-weight: 700; text-align: center; margin-bottom: 25px; font-size: 1.6rem; }
@@ -132,7 +142,7 @@ function thai_date($timestamp) {
 
     <div class="sub-header">รายการ ประเภท(หลัก)ของเงิน</div>
 
-     <div class="navbar-custom">
+   <div class="navbar-custom">
         <div class="container-fluid d-flex flex-wrap">
             <a href="index.php" class="nav-link-custom">รายการหลัก</a>
             
@@ -146,7 +156,9 @@ function thai_date($timestamp) {
                     <li><a class="dropdown-item" href="Activity.php">กิจกรรมหลัก</a></li>
                     <li><a class="dropdown-item" href="Sourcemoney.php">แหล่งของเงิน</a></li>
                     <li><a class="dropdown-item" href="Expensesbudget.php">งบรายจ่าย</a></li>
-                    <li><a class="dropdown-item" href="Mainmoney.php">ประเภท(หลัก)ของเงิน</a></li>
+                    
+                    <li><a class="dropdown-item <?php echo ($current_page == 'Mainmoney.php') ? 'active' : ''; ?>" href="Mainmoney.php">ประเภท(หลัก)ของเงิน</a></li>
+                    
                     <li><a class="dropdown-item" href="Subtypesmoney.php">ประเภท(ย่อย)ของเงิน</a></li>
                 </ul>
             </div>
@@ -186,14 +198,16 @@ function thai_date($timestamp) {
                     <li><a class="dropdown-item" href="Advance payment for government service.php">จ่ายเงินทดรองราชการ</a></li>
                 </ul>
             </div>
+
              <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
+            
             <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตรวจสอบ</a>
                 <ul class="dropdown-menu">
@@ -208,6 +222,7 @@ function thai_date($timestamp) {
                     <li><a class="dropdown-item" href="Requisition items with incorrect installment vouchers.php">รายการขอเบิกฯที่วางฎีกาผิดใบงวด</a></li>
                 </ul>
             </div>
+
             <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">รายงาน</a>
                 <ul class="dropdown-menu">
@@ -224,6 +239,7 @@ function thai_date($timestamp) {
                     <li><a class="dropdown-item" href="Loan Report.php">รายงานลูกหนี้เงินยืม</a></li>
                 </ul>
             </div>
+
             <a href="#" class="nav-link-custom ms-auto">คู่มือ</a>
         </div>
     </div>

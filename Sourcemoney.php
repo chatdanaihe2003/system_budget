@@ -80,6 +80,9 @@ function thai_date($timestamp) {
     $y = date("Y", $timestamp) + 543;
     return "วัน" . $thai_day_arr[date("w", $timestamp)] . "ที่ $d $thai_month_arr[$m] พ.ศ. $y";
 }
+
+// *** เช็คหน้าปัจจุบัน ***
+$current_page = basename($_SERVER['PHP_SELF']);
 ?>
 
 <!DOCTYPE html>
@@ -115,6 +118,13 @@ function thai_date($timestamp) {
         .nav-link-custom:hover, .nav-link-custom.active { color: #fff; background-color: rgba(255,255,255,0.1); border-bottom-color: var(--accent-yellow); }
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
+        
+        /* [แก้ไข] เพิ่มสไตล์สำหรับเมนู Active ให้เป็นตัวหนาสีดำ */
+        .dropdown-item.active, .dropdown-item:active {
+            background-color: white; 
+            color: black !important; /* บังคับตัวหนังสือสีดำ */
+            font-weight: bold !important; /* บังคับตัวหนา */
+        }
         
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
         .page-title { color: #d63384; font-weight: 700; text-align: center; margin-bottom: 25px; font-size: 1.6rem; }
@@ -194,7 +204,9 @@ function thai_date($timestamp) {
                     <li><a class="dropdown-item" href="plan.php">แผนงาน</a></li>
                     <li><a class="dropdown-item" href="Projectoutcomes.php">ผลผลิตโครงการ</a></li>
                     <li><a class="dropdown-item" href="Activity.php">กิจกรรมหลัก</a></li>
-                    <li><a class="dropdown-item" href="Sourcemoney.php">แหล่งของเงิน</a></li>
+                    
+                    <li><a class="dropdown-item <?php echo ($current_page == 'Sourcemoney.php') ? 'active' : ''; ?>" href="Sourcemoney.php">แหล่งของเงิน</a></li>
+                    
                     <li><a class="dropdown-item" href="Expensesbudget.php">งบรายจ่าย</a></li>
                     <li><a class="dropdown-item" href="Mainmoney.php">ประเภท(หลัก)ของเงิน</a></li>
                     <li><a class="dropdown-item" href="Subtypesmoney.php">ประเภท(ย่อย)ของเงิน</a></li>
@@ -242,7 +254,7 @@ function thai_date($timestamp) {
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
             
@@ -326,8 +338,8 @@ function thai_date($timestamp) {
                                 echo "<td class='td-center'>";
                                 echo '<a href="?delete_id='.$row['id'].'" class="action-btn btn-delete" onclick="return confirm(\'คุณต้องการลบรายการรหัส '.$row['source_code'].' หรือไม่?\')" title="ลบ"><i class="fa-solid fa-trash-can"></i></a>';
                                 echo '<button class="action-btn btn-edit" title="แก้ไข" 
-                                        onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
-                                        <i class="fa-solid fa-pen-to-square"></i>
+                                            onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
+                                            <i class="fa-solid fa-pen-to-square"></i>
                                       </button>';
                                 echo "</td>";
                                 echo "</tr>";
