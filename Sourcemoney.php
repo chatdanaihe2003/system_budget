@@ -52,19 +52,37 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- ดึงข้อมูลแหล่งของเงิน ---
-$sql_sources = "SELECT * FROM funding_sources ORDER BY budget_year DESC, source_code ASC";
-$result_sources = $conn->query($sql_sources);
+// --- [แก้ไข] ส่วนการดึงข้อมูลและค้นหา ---
+$search = isset($_GET['search']) ? $_GET['search'] : '';
+
+if ($search != "") {
+    // ถ้ามีการค้นหา ให้กรองด้วย source_code
+    $search_param = "%" . $search . "%";
+    $sql_sources = "SELECT * FROM funding_sources WHERE source_code LIKE ? ORDER BY budget_year DESC, source_code ASC";
+    $stmt = $conn->prepare($sql_sources);
+    $stmt->bind_param("s", $search_param);
+    $stmt->execute();
+    $result_sources = $stmt->get_result();
+} else {
+    // ถ้าไม่มีการค้นหา ให้ดึงทั้งหมดตามปกติ
+    $sql_sources = "SELECT * FROM funding_sources ORDER BY budget_year DESC, source_code ASC";
+    $result_sources = $conn->query($sql_sources);
+}
 
 // --- ดึงข้อมูลปีงบประมาณ (สำหรับ Dropdown) ---
-$sql_years = "SELECT budget_year FROM fiscal_years ORDER BY budget_year DESC";
-$result_years = $conn->query($sql_years);
+$check_table = $conn->query("SHOW TABLES LIKE 'fiscal_years'");
 $years_options = [];
-if ($result_years->num_rows > 0) {
-    while($y = $result_years->fetch_assoc()) {
-        $years_options[] = $y['budget_year'];
+if ($check_table->num_rows > 0) {
+    $sql_years = "SELECT budget_year FROM fiscal_years ORDER BY budget_year DESC";
+    $result_years = $conn->query($sql_years);
+    if ($result_years->num_rows > 0) {
+        while($y = $result_years->fetch_assoc()) {
+            $years_options[] = $y['budget_year'];
+        }
     }
-} else {
+}
+// ถ้าไม่มีข้อมูลปีงบประมาณ ให้ใส่ปีปัจจุบัน + 1 เป็นค่าเริ่มต้น
+if (empty($years_options)) {
     $years_options[] = date("Y") + 543 + 1;
 }
 
@@ -297,12 +315,24 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="container pb-5">
         <div class="content-card">
             
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <div style="width: 150px;"></div> 
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                 <h2 class="page-title m-0">กำหนดแหล่งของเงิน</h2>
-                <button class="btn btn-add" data-bs-toggle="modal" data-bs-target="#addModal">
-                    <i class="fa-solid fa-plus me-1"></i> เพิ่มข้อมูล
-                </button>
+                
+                <div class="d-flex align-items-center">
+                    <form action="Sourcemoney.php" method="GET" class="d-flex me-2">
+                        <div class="input-group">
+                            <input type="text" name="search" class="form-control" placeholder="ค้นหารหัส..." value="<?php echo htmlspecialchars($search); ?>">
+                            <button class="btn btn-secondary" type="submit"><i class="fa-solid fa-magnifying-glass"></i></button>
+                        </div>
+                        <?php if($search != ""): ?>
+                            <a href="Sourcemoney.php" class="btn btn-outline-danger ms-1 d-flex align-items-center justify-content-center"><i class="fa-solid fa-xmark"></i></a>
+                        <?php endif; ?>
+                    </form>
+
+                    <button class="btn btn-add" data-bs-toggle="modal" data-bs-target="#addModal">
+                        <i class="fa-solid fa-plus me-1"></i> เพิ่มข้อมูล
+                    </button>
+                </div>
             </div>
 
             <div class="info-box">

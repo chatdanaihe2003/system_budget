@@ -1,7 +1,7 @@
 <?php
 session_start(); // 1. เริ่มต้น Session
 
-// 2. ตรวจสอบว่าได้ Login หรือยัง ถ้ายังให้เด้งไปหน้า Login
+// 2. ตรวจสอบว่าได้ Login หรือยัง
 if (!isset($_SESSION['user_id'])) {
     header("Location: Login.php");
     exit();
@@ -25,7 +25,6 @@ if ($conn->connect_error) {
 // 1. ลบข้อมูล
 if (isset($_GET['delete_id'])) {
     $id = $_GET['delete_id'];
-    // ** ตรวจสอบชื่อตารางในฐานข้อมูลของคุณ (เช่น project_withdrawals หรือ project_loans) **
     $stmt = $conn->prepare("DELETE FROM project_withdrawals WHERE id = ?");
     $stmt->bind_param("i", $id);
     $stmt->execute();
@@ -35,21 +34,31 @@ if (isset($_GET['delete_id'])) {
 
 // 2. เพิ่ม หรือ แก้ไขข้อมูล
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $withdrawal_order = $_POST['withdrawal_order'];
-    $doc_date = $_POST['doc_date'];
-    $doc_no = $_POST['doc_no'];
-    $description = $_POST['description'];
-    $amount = $_POST['amount'];
-    
-    // ** ตรวจสอบชื่อตารางให้ตรงกับ DB ของคุณ **
+    // ใช้ ?? เพื่อกำหนดค่าเริ่มต้น ป้องกัน Error Undefined Array Key
+    $withdrawal_order = $_POST['withdrawal_order'] ?? 0;
+    $doc_date = !empty($_POST['doc_date']) ? $_POST['doc_date'] : date('Y-m-d');
+    $doc_no = $_POST['doc_no'] ?? '';
+    $withdrawal_type = $_POST['withdrawal_type'] ?? 1;
+    $description = $_POST['description'] ?? '';
+    $project_id = $_POST['project_id'] ?? 0;
+    $activity_id = $_POST['activity_id'] ?? 0;
+    $amount = $_POST['amount'] ?? 0;
+    $expense_type = $_POST['expense_type'] ?? '';
+    $requester = $_POST['requester'] ?? '';
+
+    // ตรวจสอบ Action
     if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        $stmt = $conn->prepare("INSERT INTO project_withdrawals (withdrawal_order, doc_date, doc_no, description, amount) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param("isssd", $withdrawal_order, $doc_date, $doc_no, $description, $amount);
+        $stmt = $conn->prepare("INSERT INTO project_withdrawals 
+            (withdrawal_order, doc_date, doc_no, withdrawal_type, description, project_id, activity_id, amount, expense_type, requester) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("issisiidss", $withdrawal_order, $doc_date, $doc_no, $withdrawal_type, $description, $project_id, $activity_id, $amount, $expense_type, $requester);
         $stmt->execute();
     } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
         $id = $_POST['edit_id'];
-        $stmt = $conn->prepare("UPDATE project_withdrawals SET withdrawal_order=?, doc_date=?, doc_no=?, description=?, amount=? WHERE id=?");
-        $stmt->bind_param("isssdi", $withdrawal_order, $doc_date, $doc_no, $description, $amount, $id);
+        $stmt = $conn->prepare("UPDATE project_withdrawals 
+            SET withdrawal_order=?, doc_date=?, doc_no=?, withdrawal_type=?, description=?, project_id=?, activity_id=?, amount=?, expense_type=?, requester=? 
+            WHERE id=?");
+        $stmt->bind_param("issisiidssi", $withdrawal_order, $doc_date, $doc_no, $withdrawal_type, $description, $project_id, $activity_id, $amount, $expense_type, $requester, $id);
         $stmt->execute();
     }
     header("Location: RequestforWithdrawalProjectLoan.php");
@@ -57,12 +66,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 }
 
 // --- ดึงข้อมูล ---
-// ** ตรวจสอบชื่อตารางให้ตรงกับ DB ของคุณ **
-// หากยังไม่ได้สร้างตาราง project_withdrawals โค้ดนี้จะ Error ให้สร้างตารางก่อนนะครับ
-$sql_data = "SELECT * FROM project_withdrawals ORDER BY withdrawal_order ASC";
+$sql_data = "SELECT * FROM project_withdrawals ORDER BY id ASC";
 $result_data = $conn->query($sql_data);
 
-$total_amount = 0; 
+// จำลองข้อมูล Dropdown โครงการ (ถ้ามีตาราง projects ให้แก้ตรงนี้)
+$projects_opt = [
+    ['id' => 1, 'name' => 'โครงการพัฒนาคุณภาพผู้เรียน'],
+    ['id' => 2, 'name' => 'โครงการปรับปรุงภูมิทัศน์'],
+    ['id' => 3, 'name' => 'โครงการจัดซื้อครุภัณฑ์']
+];
 
 // ฟังก์ชันวันที่ไทยย่อ
 function thai_date_short($date_str) {
@@ -106,7 +118,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             --accent-gold: #c59d0a;
             --bg-light: #f4f7f6;
             --menu-bg: #212529;
-            --header-olive: #8B8000; /* สีทองเข้ม/Olive */
+            --header-olive: #8B8000;
         }
         body {
             font-family: 'Sarabun', sans-serif;
@@ -118,110 +130,59 @@ $current_page = basename($_SERVER['PHP_SELF']);
         .sub-header { background: linear-gradient(90deg, var(--accent-yellow) 0%, var(--accent-gold) 100%); padding: 8px 20px; font-weight: 700; color: var(--primary-dark); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .navbar-custom { background-color: var(--menu-bg); padding: 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         
-        /* CSS Active Menu Logic */
         .nav-link-custom { color: #aaa; padding: 12px 20px; text-decoration: none; display: inline-block; transition: all 0.3s; border-bottom: 3px solid transparent; font-size: 0.95rem; }
-        .nav-link-custom:hover, .nav-link-custom.active { 
-            color: #fff; 
-            background-color: #333; 
-            border-bottom-color: var(--accent-yellow); 
-        }
-        
+        .nav-link-custom:hover, .nav-link-custom.active { color: #fff; background-color: #333; border-bottom-color: var(--accent-yellow); }
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
         
-        /* [แก้ไข] ปรับสไตล์เมนู Active ให้เป็นตัวหนา สีดำ */
+        /* Dropdown Active Style */
         .dropdown-item.active, .dropdown-item:active {
             background-color: white; 
-            color: black !important; /* สีดำ */
-            font-weight: bold !important; /* ตัวหนา */
+            color: black !important;
+            font-weight: bold !important;
         }
 
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
-        
-        /* Title Color Pinkish/Purple */
         .page-title { color: #d63384; font-weight: 700; text-align: center; margin-bottom: 20px; font-size: 1.4rem; }
         
-        /* --- Table Styles (Olive Gold Theme) --- */
-        .table-custom th { 
-            background-color: var(--header-olive); 
-            color: white; 
-            font-weight: 500; 
-            text-align: center; 
-            vertical-align: middle; 
-            border: 1px solid rgba(255,255,255,0.2); 
-            font-size: 0.85rem; 
-            padding: 10px;
-        }
-        .table-custom td { 
-            vertical-align: middle; 
-            border-bottom: 1px solid #f0f0f0; 
-            padding: 10px; 
-            font-size: 0.85rem; 
-            background-color: white !important;
-        }
-        
-        /* ยกเลิก Striped */
-        .table-striped > tbody > tr:nth-of-type(odd) > * { --bs-table-accent-bg: transparent; }
-        .table-striped > tbody > tr:nth-of-type(even) > * { --bs-table-accent-bg: transparent; }
-        
-        /* Footer Row Style */
-        .total-row td {
-            font-weight: bold;
-            color: #333;
-            border-top: 2px solid #ddd;
-            background-color: white !important;
-        }
-        
+        .table-custom th { background-color: var(--header-olive); color: white; font-weight: 500; text-align: center; vertical-align: middle; border: 1px solid rgba(255,255,255,0.2); font-size: 0.85rem; padding: 10px; }
+        .table-custom td { vertical-align: middle; border-bottom: 1px solid #f0f0f0; padding: 10px; font-size: 0.85rem; background-color: white !important; }
         .td-center { text-align: center; }
         .td-right { text-align: right; }
         .td-left { text-align: left; }
 
-        .btn-add { background-color: #0d6efd; color: white; border-radius: 50px; padding: 8px 25px; font-weight: 600; box-shadow: 0 4px 6px rgba(13, 110, 253, 0.2); transition: transform 0.2s; text-decoration: none; border: none; cursor: pointer; font-size: 0.9rem; }
-        .btn-add:hover { background-color: #0b5ed7; color: white; transform: translateY(-2px); }
-        
+        .btn-add { background-color: #0d6efd; color: white; border-radius: 50px; padding: 5px 20px; font-weight: bold; text-decoration: none; border: none; font-size: 0.9rem; }
+        .btn-add:hover { background-color: #0b5ed7; color: white; transform: translateY(-1px); }
         .action-btn { border: none; background: none; cursor: pointer; transition: 0.2s; font-size: 1.1rem; padding: 0 4px; }
-        .btn-edit { color: #0d6efd; } /* สีฟ้า */
-        .btn-delete { color: #dc3545; } /* สีแดง */
+        .btn-edit { color: #0d6efd; }
+        .btn-delete { color: #dc3545; }
         .action-btn:hover { transform: scale(1.2); }
 
         /* Modal Styles */
         .form-yellow-bg { background-color: #fff9c4; padding: 20px; border-radius: 5px; border: 1px solid #eee; }
-        .form-label-custom { font-weight: bold; text-align: right; font-size: 0.9rem; }
+        .form-label-custom { font-weight: bold; text-align: right; font-size: 0.9rem; color: #333; padding-top: 5px; }
         .modal-header { background-color: transparent; border-bottom: none; }
         .modal-title-custom { color: #008080; font-weight: bold; width: 100%; text-align: center; font-size: 1.3rem;}
         
-        /* User Info & Logout Button Styles */
         .user-info { font-size: 0.9rem; text-align: right; }
         .user-role { color: var(--accent-yellow); font-weight: 700; text-transform: uppercase; }
-        .btn-logout {
-            color: #ff6b6b;
-            text-decoration: none;
-            margin-left: 10px;
-            font-size: 0.85rem;
-            border: 1px solid #ff6b6b;
-            padding: 2px 8px;
-            border-radius: 4px;
-            transition: all 0.2s;
-        }
+        .btn-logout { color: #ff6b6b; text-decoration: none; margin-left: 10px; font-size: 0.85rem; border: 1px solid #ff6b6b; padding: 2px 8px; border-radius: 4px; transition: all 0.2s; }
         .btn-logout:hover { background-color: #ff6b6b; color: white; }
+        
+        .status-box { width: 15px; height: 15px; display: inline-block; vertical-align: middle; margin-right: 5px;}
+        .bg-green { background-color: #00cc00; }
+        .bg-red { background-color: #ff0000; }
     </style>
 </head>
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
         <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
-        
         <div class="user-info">
-            <div>
-                ผู้ใช้ : <?php echo htmlspecialchars($_SESSION['fullname']); ?> 
-                (<span class="user-role">**<?php echo $_SESSION['role']; ?>**</span>)
-                <a href="Logout.php" class="btn-logout" onclick="return confirm('ยืนยันออกจากระบบ?');">
-                    <i class="fa-solid fa-power-off"></i> ออก
-                </a>
-            </div>
+            <div>ผู้ใช้ : <?php echo htmlspecialchars($_SESSION['fullname']); ?> (<span class="user-role">**<?php echo $_SESSION['role']; ?>**</span>) <a href="Logout.php" class="btn-logout" onclick="return confirm('ยืนยันออกจากระบบ?');"><i class="fa-solid fa-power-off"></i> ออก</a></div>
             <small class="text-white-50"><?php echo thai_date_full(time()); ?></small>
         </div>
-        </div>
+    </div>
 
     <div class="sub-header">ทะเบียนขอเบิก/ขอยืมเงินโครงการ</div>
 
@@ -233,15 +194,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
-                    <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="plan.php">แผนงาน</a></li>
-                    <li><a class="dropdown-item" href="Projectoutcomes.php">ผลผลิตโครงการ</a></li>
-                    <li><a class="dropdown-item" href="Activity.php">กิจกรรมหลัก</a></li>
-                    <li><a class="dropdown-item" href="Sourcemoney.php">แหล่งของเงิน</a></li>
-                    <li><a class="dropdown-item" href="Expensesbudget.php">งบรายจ่าย</a></li>
-                    <li><a class="dropdown-item" href="Mainmoney.php">ประเภท(หลัก)ของเงิน</a></li>
-                    <li><a class="dropdown-item" href="Subtypesmoney.php">ประเภท(ย่อย)ของเงิน</a></li>
-                </ul>
+                    </ul>
             </div>
             
             <div class="dropdown">
@@ -257,9 +210,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <div class="dropdown">
                 <a href="#" class="nav-link-custom active dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนขอเบิก</a>
                 <ul class="dropdown-menu">
-                    
                     <li><a class="dropdown-item <?php echo ($current_page == 'RequestforWithdrawalProjectLoan.php') ? 'active' : ''; ?>" href="RequestforWithdrawalProjectLoan.php">ทะเบียนขอเบิก/ขอยืมเงินโครงการ</a></li>
-                    
                     <li><a class="dropdown-item" href="ProjectRefundRegistration.php">***ทะเบียนคืนเงินโครงการ</a></li>
                     <li><a class="dropdown-item" href="TreasuryWithdrawal.php">ทะเบียนขอเบิกเงินคงคลัง</a></li>
                     <li><a class="dropdown-item" href="TreasuryRefundRegister.php">***ทะเบียนคืนเงินคงคลัง</a></li>
@@ -268,7 +219,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 </ul>
             </div>
 
-            <div class="dropdown">
+             <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนจ่าย</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Authorizebudgetexpenditures.php">สั่งจ่ายเงินงบประมาณ</a></li>
@@ -281,45 +232,22 @@ $current_page = basename($_SERVER['PHP_SELF']);
                     <li><a class="dropdown-item" href="Advance payment for government service.php">จ่ายเงินทดรองราชการ</a></li>
                 </ul>
             </div>
-
              <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
                 <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="#">เงินงบประมาณ</a></li>
                 </ul>
             </div>
-            
             <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตรวจสอบ</a>
                 <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="Check budget allocation.php">ตรวจสอบการจัดสรรงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Check the periodic financial report.php">รายงานเงินประจำงวด</a></li>
-                    <li><a class="dropdown-item" href="Check main payment type.php">จ่ายเงินประเภทหลัก</a></li>
-                    <li><a class="dropdown-item" href="Check the government advance payment.php">จ่ายเงินทดรองราชการ</a></li>
-                    <li><a class="dropdown-item" href="The appeal number does not exist in the system.php">เลขที่ฎีกาที่ไม่มีในระบบ</a></li>
-                    <li><a class="dropdown-item" href="Appeals regarding project termination classified by invoice.php">ฎีกากับการตัดโครงการจำแนกตามใบงวด</a></li>
-                    <li><a class="dropdown-item" href="Supreme Court Rulings and References for Reimbursement Requests Classified by Ruling.php">ฎีกากับการอ้างอิงการขอเบิกจำแนกตามฎีกา</a></li>
-                    <li><a class="dropdown-item" href="Withdrawal requests that have not yet been submitted for approval.php">รายการขอเบิกฯที่ยังไม่ได้วางฎีกา</a></li>
-                    <li><a class="dropdown-item" href="Requisition items with incorrect installment vouchers.php">รายการขอเบิกฯที่วางฎีกาผิดใบงวด</a></li>
+                    <li><a class="dropdown-item" href="#">ตรวจสอบการจัดสรร</a></li>
                 </ul>
             </div>
-
             <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">รายงาน</a>
                 <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="Budget allocation report.php">รายงานการจัดสรรงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Expenditure report categorized by project.php">รายงานการใช้จ่ายจำแนกตามโครงการ</a></li>
-                    <li><a class="dropdown-item" href="Annuity register.php">ทะเบียนเงินงวด</a></li>
-                    <li><a class="dropdown-item" href="Expenditure report categorized by budget code.php">รายงานการใช้จ่ายจำแนกตามรหัสงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Expenditure report categorized by type of.php">รายงานการใช้จ่ายจำแนกตามประเภทรายการจ่าย</a></li>
-                    <li><a class="dropdown-item" href="Daily cash balance report.php">รายงานเงินคงเหลือประจำวัน</a></li>
-                    <li><a class="dropdown-item" href="cash book.php">สมุดเงินสด</a></li>
-                    <li><a class="dropdown-item" href="budget report.php">รายงานเงินงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Report money outside the budget.php">รายงานเงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="State income report.php">รายงานเงินรายได้แผ่นดิน</a></li>
-                    <li><a class="dropdown-item" href="Loan Report.php">รายงานลูกหนี้เงินยืม</a></li>
+                    <li><a class="dropdown-item" href="#">รายงานการจัดสรร</a></li>
                 </ul>
             </div>
 
@@ -345,27 +273,41 @@ $current_page = basename($_SERVER['PHP_SELF']);
                             <th style="width: 5%;">ที่</th>
                             <th style="width: 10%;">วดป</th>
                             <th style="width: 10%;">ที่เอกสาร</th>
-                            <th style="width: 45%;">รายการ</th>
-                            <th style="width: 15%;">จำนวนเงิน</th>
+                            <th style="width: 40%;">รายการ</th>
+                            <th style="width: 10%;">จำนวนเงิน</th>
+                            <th style="width: 5%;">สถานะ</th>
                             <th style="width: 15%;">จัดการ</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php 
+                        $i = 1;
+                        $total_amount = 0;
                         if ($result_data && $result_data->num_rows > 0) {
                             while($row = $result_data->fetch_assoc()) {
-                                $total_amount += $row['amount'];
+                                // เช็ค isset ป้องกัน error
+                                $withdrawal_order = $row['withdrawal_order'] ?? $i++;
+                                $doc_date = $row['doc_date'] ?? '';
+                                $doc_no = $row['doc_no'] ?? '';
+                                $description = $row['description'] ?? '';
+                                $amount = $row['amount'] ?? 0;
+                                $withdrawal_type = $row['withdrawal_type'] ?? 1;
                                 
+                                $total_amount += $amount;
+                                
+                                // กำหนดสีสถานะ (4=เบิก=เขียว, อื่นๆ=ยืม=แดง)
+                                $status_class = ($withdrawal_type == 4) ? 'bg-green' : 'bg-red';
+
                                 echo "<tr>";
-                                echo "<td class='td-center'>" . $row['withdrawal_order'] . "</td>";
-                                echo "<td class='td-center'>" . thai_date_short($row['doc_date']) . "</td>";
-                                echo "<td class='td-left'>" . $row['doc_no'] . "</td>";
-                                echo "<td class='td-left'>" . $row['description'] . "</td>";
-                                echo "<td class='td-right'>" . number_format($row['amount'], 2) . "</td>";
+                                echo "<td class='td-center'>" . $withdrawal_order . "</td>";
+                                echo "<td class='td-center'>" . thai_date_short($doc_date) . "</td>";
+                                echo "<td class='td-left'>" . $doc_no . "</td>";
+                                echo "<td class='td-left'>" . $description . "</td>";
+                                echo "<td class='td-right'>" . number_format($amount, 2) . "</td>";
+                                echo "<td class='td-center'><div class='status-box $status_class'></div></td>";
                                 
-                                // ปุ่มจัดการ (ลบ/แก้ไข)
                                 echo "<td class='td-center'>";
-                                echo '<a href="?delete_id='.$row['id'].'" class="action-btn btn-delete" onclick="return confirm(\'คุณต้องการลบรายการนี้หรือไม่?\')" title="ลบ"><i class="fa-solid fa-trash-can"></i></a>';
+                                echo '<a href="?delete_id='.($row['id'] ?? 0).'" class="action-btn btn-delete" onclick="return confirm(\'คุณต้องการลบรายการนี้หรือไม่?\')" title="ลบ"><i class="fa-solid fa-trash-can"></i></a>';
                                 echo '<button class="action-btn btn-edit" title="แก้ไข" onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')"><i class="fa-solid fa-pen-to-square"></i></button>';
                                 echo "</td>";
 
@@ -373,14 +315,14 @@ $current_page = basename($_SERVER['PHP_SELF']);
                             }
                             
                             // Row รวมยอดสุดท้าย
-                            echo "<tr class='total-row'>";
+                            echo "<tr style='background-color: #ffcccc; font-weight: bold;'>";
                             echo "<td colspan='4' class='text-center'>รวม</td>";
                             echo "<td class='td-right'>" . number_format($total_amount, 2) . "</td>";
-                            echo "<td></td>";
+                            echo "<td colspan='2'></td>";
                             echo "</tr>";
 
                         } else {
-                            echo "<tr><td colspan='6' class='text-center py-4 text-muted'>ยังไม่มีข้อมูล</td></tr>";
+                            echo "<tr><td colspan='7' class='text-center py-4 text-muted'>ยังไม่มีข้อมูล</td></tr>";
                         }
                         ?>
                     </tbody>
@@ -393,53 +335,101 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="modal fade" id="addModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
-                <div class="modal-header d-block">
-                    <h5 class="modal-title-custom" id="modalTitle">ลงทะเบียน ขอเบิก/ขอยืมเงินโครงการ ปีงบประมาณ 2568</h5>
-                </div>
-                <div class="modal-body form-yellow-bg mx-3 mb-3">
+                <div class="modal-body form-yellow-bg m-3">
                     <form action="RequestforWithdrawalProjectLoan.php" method="POST">
                         <input type="hidden" name="action" id="form_action" value="add">
                         <input type="hidden" name="edit_id" id="edit_id">
+                        
+                        <input type="hidden" name="withdrawal_order" id="withdrawal_order" value="0">
+                        <input type="hidden" name="doc_date" id="doc_date" value="<?php echo date('Y-m-d'); ?>">
 
-                        <div class="row mb-2">
-                            <div class="col-md-3 form-label-custom">ที่</div>
-                            <div class="col-md-2">
-                                <input type="number" name="withdrawal_order" id="withdrawal_order" class="form-control form-control-sm" required>
-                            </div>
-                        </div>
-
-                        <div class="row mb-2">
-                            <div class="col-md-3 form-label-custom">วดป</div>
-                            <div class="col-md-3">
-                                <input type="date" name="doc_date" id="doc_date" class="form-control form-control-sm" value="<?php echo date('Y-m-d'); ?>" required>
-                            </div>
-                        </div>
-
-                        <div class="row mb-2">
+                        <div class="row mb-2 align-items-center">
                             <div class="col-md-3 form-label-custom">ที่เอกสาร</div>
                             <div class="col-md-4">
-                                <input type="text" name="doc_no" id="doc_no" class="form-control form-control-sm" required>
+                                <input type="text" name="doc_no" id="doc_no" class="form-control form-control-sm">
                             </div>
                         </div>
 
                         <div class="row mb-2">
+                            <div class="col-md-3"></div>
+                            <div class="col-md-9">
+                                <div class="form-check mb-1">
+                                    <input class="form-check-input" type="radio" name="withdrawal_type" id="type1" value="1" checked>
+                                    <label class="form-check-label" for="type1">ขอยืมเงินงบประมาณ</label>
+                                </div>
+                                <div class="form-check mb-1">
+                                    <input class="form-check-input" type="radio" name="withdrawal_type" id="type2" value="2">
+                                    <label class="form-check-label" for="type2">ขอยืมเงินนอกงบประมาณ</label>
+                                </div>
+                                <div class="form-check mb-1">
+                                    <input class="form-check-input" type="radio" name="withdrawal_type" id="type3" value="3">
+                                    <label class="form-check-label" for="type3">ขอยืมเงินทดรองราชการ</label>
+                                </div>
+                                <div class="form-check mb-1">
+                                    <input class="form-check-input" type="radio" name="withdrawal_type" id="type4" value="4">
+                                    <label class="form-check-label" for="type4">ขอเบิก</label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
                             <div class="col-md-3 form-label-custom">รายการ</div>
                             <div class="col-md-8">
                                 <input type="text" name="description" id="description" class="form-control form-control-sm" required>
                             </div>
                         </div>
 
-                        <div class="row mb-2">
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-3 form-label-custom">โครงการ</div>
+                            <div class="col-md-9">
+                                <select name="project_id" id="project_id" class="form-select form-select-sm">
+                                    <option value="0">เลือก</option>
+                                    <?php foreach ($projects_opt as $p): ?>
+                                        <option value="<?php echo $p['id']; ?>"><?php echo $p['name']; ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-3 form-label-custom">กิจกรรม</div>
+                            <div class="col-md-5">
+                                <select name="activity_id" id="activity_id" class="form-select form-select-sm">
+                                    <option value="0">เลือกโครงการก่อน</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
                             <div class="col-md-3 form-label-custom">จำนวนเงิน</div>
                             <div class="col-md-3">
                                 <input type="number" step="0.01" name="amount" id="amount" class="form-control form-control-sm" required>
                             </div>
-                            <div class="col-md-1">บาท</div>
+                            <div class="col-md-1 pt-1">บาท</div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-3 form-label-custom">ประเภทรายการจ่าย</div>
+                            <div class="col-md-5">
+                                <select name="expense_type" id="expense_type" class="form-select form-select-sm">
+                                    <option value="">เลือก</option>
+                                    <option value="ค่าตอบแทน">ค่าตอบแทน</option>
+                                    <option value="ค่าใช้สอย">ค่าใช้สอย</option>
+                                    <option value="ค่าวัสดุ">ค่าวัสดุ</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-3 form-label-custom">ชื่อผู้ขอเบิก/ขอยืมเงิน</div>
+                            <div class="col-md-5">
+                                <input type="text" name="requester" id="requester" class="form-control form-control-sm">
+                            </div>
                         </div>
 
                         <div class="text-center mt-4">
-                            <button type="submit" class="btn btn-secondary border-dark text-dark" style="background-color: #e0e0e0;">ตกลง</button>
-                            <button type="button" class="btn btn-secondary border-dark text-dark" style="background-color: #e0e0e0;" data-bs-dismiss="modal">ย้อนกลับ</button>
+                            <button type="submit" class="btn btn-light border shadow-sm px-3" style="background-color: #e0e0e0;">ตกลง</button>
+                            <button type="button" class="btn btn-light border shadow-sm px-3" style="background-color: #e0e0e0;" data-bs-dismiss="modal">ย้อนกลับ</button>
                         </div>
                     </form>
                 </div>
@@ -452,9 +442,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
         function openAddModal() {
             document.getElementById('form_action').value = 'add';
             document.getElementById('edit_id').value = '';
-            document.getElementById('modalTitle').innerHTML = 'ลงทะเบียน ขอเบิก/ขอยืมเงินโครงการ ปีงบประมาณ 2568';
             document.querySelector('form').reset();
-            
             var myModal = new bootstrap.Modal(document.getElementById('addModal'));
             myModal.show();
         }
@@ -462,13 +450,17 @@ $current_page = basename($_SERVER['PHP_SELF']);
         function openEditModal(data) {
             document.getElementById('form_action').value = 'edit';
             document.getElementById('edit_id').value = data.id;
-            document.getElementById('modalTitle').innerHTML = 'แก้ไข ขอเบิก/ขอยืมเงินโครงการ';
             
-            document.getElementById('withdrawal_order').value = data.withdrawal_order;
-            document.getElementById('doc_date').value = data.doc_date;
-            document.getElementById('doc_no').value = data.doc_no;
-            document.getElementById('description').value = data.description;
-            document.getElementById('amount').value = data.amount;
+            document.getElementById('doc_no').value = data.doc_no || '';
+            document.getElementById('description').value = data.description || '';
+            document.getElementById('amount').value = data.amount || '';
+            document.getElementById('expense_type').value = data.expense_type || '';
+            document.getElementById('requester').value = data.requester || '';
+            
+            if(data.withdrawal_type) {
+                let radios = document.getElementsByName('withdrawal_type');
+                for(let r of radios) { if(r.value == data.withdrawal_type) r.checked = true; }
+            }
 
             var myModal = new bootstrap.Modal(document.getElementById('addModal'));
             myModal.show();

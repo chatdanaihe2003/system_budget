@@ -53,12 +53,29 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- ดึงข้อมูลประเภท(ย่อย) พร้อมชื่อประเภท(หลัก) ---
-$sql_sub = "SELECT s.*, m.type_name AS main_type_name 
-            FROM money_types_sub s 
-            LEFT JOIN money_types_main m ON s.main_type_id = m.id 
-            ORDER BY s.budget_year DESC, s.subtype_code ASC";
-$result_sub = $conn->query($sql_sub);
+// --- [แก้ไข] ส่วนการดึงข้อมูลและค้นหา ---
+$search = isset($_GET['search']) ? $_GET['search'] : '';
+
+if ($search != "") {
+    // ถ้ามีการค้นหา ให้กรองด้วย subtype_code
+    $search_param = "%" . $search . "%";
+    $sql_sub = "SELECT s.*, m.type_name AS main_type_name 
+                FROM money_types_sub s 
+                LEFT JOIN money_types_main m ON s.main_type_id = m.id 
+                WHERE s.subtype_code LIKE ? 
+                ORDER BY s.budget_year DESC, s.subtype_code ASC";
+    $stmt = $conn->prepare($sql_sub);
+    $stmt->bind_param("s", $search_param);
+    $stmt->execute();
+    $result_sub = $stmt->get_result();
+} else {
+    // ถ้าไม่มีการค้นหา ให้ดึงทั้งหมดตามปกติ
+    $sql_sub = "SELECT s.*, m.type_name AS main_type_name 
+                FROM money_types_sub s 
+                LEFT JOIN money_types_main m ON s.main_type_id = m.id 
+                ORDER BY s.budget_year DESC, s.subtype_code ASC";
+    $result_sub = $conn->query($sql_sub);
+}
 
 // --- ดึงข้อมูลสำหรับ Dropdown ---
 // 1. ปีงบประมาณ
@@ -297,12 +314,24 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="container pb-5">
         <div class="content-card">
             
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <div style="width: 150px;"></div> 
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                 <h2 class="page-title m-0">ประเภท(ย่อย)ของเงิน</h2>
-                <button class="btn btn-add" data-bs-toggle="modal" data-bs-target="#addModal">
-                    <i class="fa-solid fa-plus me-1"></i> เพิ่มข้อมูล
-                </button>
+                
+                <div class="d-flex align-items-center">
+                    <form action="Subtypesmoney.php" method="GET" class="d-flex me-2">
+                        <div class="input-group">
+                            <input type="text" name="search" class="form-control" placeholder="ค้นหารหัส..." value="<?php echo htmlspecialchars($search); ?>">
+                            <button class="btn btn-secondary" type="submit"><i class="fa-solid fa-magnifying-glass"></i></button>
+                        </div>
+                        <?php if($search != ""): ?>
+                            <a href="Subtypesmoney.php" class="btn btn-outline-danger ms-1 d-flex align-items-center justify-content-center"><i class="fa-solid fa-xmark"></i></a>
+                        <?php endif; ?>
+                    </form>
+
+                    <button class="btn btn-add" data-bs-toggle="modal" data-bs-target="#addModal">
+                        <i class="fa-solid fa-plus me-1"></i> เพิ่มข้อมูล
+                    </button>
+                </div>
             </div>
 
             <div class="table-responsive">

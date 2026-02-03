@@ -127,11 +127,11 @@ $current_page = basename($_SERVER['PHP_SELF']);
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
         
-        /* Override Active Dropdown to be White (No Blue) */
+        /* [แก้ไข] เพิ่มสไตล์สำหรับเมนู Active ให้เป็นตัวหนาสีดำ */
         .dropdown-item.active, .dropdown-item:active {
             background-color: white; 
-            color: var(--primary-dark);
-            font-weight: 500;
+            color: black !important; /* บังคับตัวหนังสือสีดำ */
+            font-weight: bold !important; /* บังคับตัวหนา */
         }
 
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
@@ -230,7 +230,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <a href="index.php" class="nav-link-custom">รายการหลัก</a>
             
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['officers.php', 'yearbudget.php', 'plan.php', 'Projectoutcomes.php', 'Activity.php', 'Sourcemoney.php', 'Expensesbudget.php', 'Mainmoney.php', 'Subtypesmoney.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
                     <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
@@ -245,7 +245,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </div>
             
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Budgetallocation.php', 'Receivebudget.php', 'Receiveoffbudget.php', 'Receivenational.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ทะเบียนรับ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนรับ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budgetallocation.php">รับการจัดสรรงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Receivebudget.php">รับเงินงบประมาณ</a></li>
@@ -258,7 +258,9 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <a href="#" class="nav-link-custom active dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนขอเบิก</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="RequestforWithdrawalProjectLoan.php">ทะเบียนขอเบิก/ขอยืมเงินโครงการ</a></li>
-                    <li><a class="dropdown-item" href="ProjectRefundRegistration.php">***ทะเบียนคืนเงินโครงการ</a></li>
+                    
+                    <li><a class="dropdown-item <?php echo ($current_page == 'ProjectRefundRegistration.php') ? 'active' : ''; ?>" href="ProjectRefundRegistration.php">***ทะเบียนคืนเงินโครงการ</a></li>
+                    
                     <li><a class="dropdown-item" href="TreasuryWithdrawal.php">ทะเบียนขอเบิกเงินคงคลัง</a></li>
                     <li><a class="dropdown-item" href="TreasuryRefundRegister.php">***ทะเบียนคืนเงินคงคลัง</a></li>
                     <li><a class="dropdown-item" href="Withdrawtheappeal.php">***ยกเลิกฎีกา</a></li>
@@ -285,7 +287,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
             

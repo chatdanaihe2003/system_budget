@@ -52,10 +52,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- ดึงข้อมูลประเภทรายจ่าย ---
-// เรียงตามรหัส
-$sql_expenses = "SELECT * FROM expense_types ORDER BY expense_code ASC";
-$result_expenses = $conn->query($sql_expenses);
+// --- [แก้ไข] ส่วนการดึงข้อมูลและค้นหา ---
+$search = isset($_GET['search']) ? $_GET['search'] : '';
+
+if ($search != "") {
+    // ถ้ามีการค้นหา ให้กรองด้วย expense_code
+    $search_param = "%" . $search . "%";
+    $sql_expenses = "SELECT * FROM expense_types WHERE expense_code LIKE ? ORDER BY expense_code ASC";
+    $stmt = $conn->prepare($sql_expenses);
+    $stmt->bind_param("s", $search_param);
+    $stmt->execute();
+    $result_expenses = $stmt->get_result();
+} else {
+    // ถ้าไม่มีการค้นหา ให้ดึงทั้งหมดตามปกติ
+    $sql_expenses = "SELECT * FROM expense_types ORDER BY expense_code ASC";
+    $result_expenses = $conn->query($sql_expenses);
+}
 
 // ฟังก์ชันวันที่ไทย
 function thai_date($timestamp) {
@@ -286,12 +298,24 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="container pb-5">
         <div class="content-card">
             
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <div style="width: 150px;"></div> 
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                 <h2 class="page-title m-0">ประเภทรายจ่าย</h2>
-                <button class="btn btn-add" data-bs-toggle="modal" data-bs-target="#addModal">
-                    <i class="fa-solid fa-plus me-1"></i> เพิ่มข้อมูล
-                </button>
+                
+                <div class="d-flex align-items-center">
+                    <form action="Expensesbudget.php" method="GET" class="d-flex me-2">
+                        <div class="input-group">
+                            <input type="text" name="search" class="form-control" placeholder="ค้นหารหัส..." value="<?php echo htmlspecialchars($search); ?>">
+                            <button class="btn btn-secondary" type="submit"><i class="fa-solid fa-magnifying-glass"></i></button>
+                        </div>
+                        <?php if($search != ""): ?>
+                            <a href="Expensesbudget.php" class="btn btn-outline-danger ms-1 d-flex align-items-center justify-content-center"><i class="fa-solid fa-xmark"></i></a>
+                        <?php endif; ?>
+                    </form>
+
+                    <button class="btn btn-add" data-bs-toggle="modal" data-bs-target="#addModal">
+                        <i class="fa-solid fa-plus me-1"></i> เพิ่มข้อมูล
+                    </button>
+                </div>
             </div>
 
             <div class="info-box">

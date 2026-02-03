@@ -143,11 +143,11 @@ $current_page_encoded = urlencode('Off-budget funds.php');
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
         
-        /* Dropdown item active color fix (White) */
+        /* [แก้ไข] Override Active Dropdown ให้เป็นสีดำ ตัวหนา */
         .dropdown-item.active, .dropdown-item:active {
             background-color: white; 
-            color: var(--primary-dark);
-            font-weight: 500;
+            color: black !important; /* บังคับตัวหนังสือสีดำ */
+            font-weight: bold !important; /* บังคับตัวหนา */
         }
 
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
@@ -272,10 +272,10 @@ $current_page_encoded = urlencode('Off-budget funds.php');
             </div>
 
              <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Budget.php', 'Off-budget funds.php', 'National_revenue.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
-                    <li><a class="dropdown-item active" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
+                    <li><a class="dropdown-item <?php echo ($current_page == 'Off-budget funds.php') ? 'active' : ''; ?>" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>

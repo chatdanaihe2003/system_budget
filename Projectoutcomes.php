@@ -52,9 +52,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- ดึงข้อมูลผลผลิตโครงการ ---
-$sql_projects = "SELECT * FROM project_outcomes ORDER BY budget_year DESC, id ASC";
-$result_projects = $conn->query($sql_projects);
+// --- [แก้ไข] ส่วนการดึงข้อมูลและค้นหา ---
+$search = isset($_GET['search']) ? $_GET['search'] : '';
+
+if ($search != "") {
+    // ถ้ามีการค้นหา ให้กรองด้วย project_code
+    $search_param = "%" . $search . "%";
+    $sql_projects = "SELECT * FROM project_outcomes WHERE project_code LIKE ? ORDER BY budget_year DESC, id ASC";
+    $stmt = $conn->prepare($sql_projects);
+    $stmt->bind_param("s", $search_param);
+    $stmt->execute();
+    $result_projects = $stmt->get_result();
+} else {
+    // ถ้าไม่มีการค้นหา ให้ดึงทั้งหมดตามปกติ
+    $sql_projects = "SELECT * FROM project_outcomes ORDER BY budget_year DESC, id ASC";
+    $result_projects = $conn->query($sql_projects);
+}
 
 // --- ดึงข้อมูลปีงบประมาณ (สำหรับ Dropdown) ---
 $sql_years = "SELECT budget_year FROM fiscal_years ORDER BY budget_year DESC";
@@ -297,12 +310,24 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="container pb-5">
         <div class="content-card">
             
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <div style="width: 150px;"></div> 
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                 <h2 class="page-title m-0">กำหนดผลผลิตโครงการ</h2>
-                <button class="btn btn-add" data-bs-toggle="modal" data-bs-target="#addModal">
-                    <i class="fa-solid fa-plus me-1"></i> เพิ่มข้อมูล
-                </button>
+                
+                <div class="d-flex align-items-center">
+                    <form action="Projectoutcomes.php" method="GET" class="d-flex me-2">
+                        <div class="input-group">
+                            <input type="text" name="search" class="form-control" placeholder="ค้นหารหัส..." value="<?php echo htmlspecialchars($search); ?>">
+                            <button class="btn btn-secondary" type="submit"><i class="fa-solid fa-magnifying-glass"></i></button>
+                        </div>
+                        <?php if($search != ""): ?>
+                            <a href="Projectoutcomes.php" class="btn btn-outline-danger ms-1 d-flex align-items-center justify-content-center"><i class="fa-solid fa-xmark"></i></a>
+                        <?php endif; ?>
+                    </form>
+
+                    <button class="btn btn-add" data-bs-toggle="modal" data-bs-target="#addModal">
+                        <i class="fa-solid fa-plus me-1"></i> เพิ่มข้อมูล
+                    </button>
+                </div>
             </div>
 
             <div class="info-box">

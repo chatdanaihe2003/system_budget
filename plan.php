@@ -52,9 +52,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- ดึงข้อมูลแผนงาน ---
-$sql_plans = "SELECT * FROM plans ORDER BY budget_year DESC, plan_code ASC";
-$result_plans = $conn->query($sql_plans);
+// --- [แก้ไข] ส่วนการดึงข้อมูลและค้นหา ---
+$search = isset($_GET['search']) ? $_GET['search'] : '';
+
+if ($search != "") {
+    // ถ้ามีการค้นหา ให้กรองด้วย plan_code
+    $search_param = "%" . $search . "%";
+    $sql_plans = "SELECT * FROM plans WHERE plan_code LIKE ? ORDER BY budget_year DESC, plan_code ASC";
+    $stmt = $conn->prepare($sql_plans);
+    $stmt->bind_param("s", $search_param);
+    $stmt->execute();
+    $result_plans = $stmt->get_result();
+} else {
+    // ถ้าไม่มีการค้นหา ให้ดึงทั้งหมด
+    $sql_plans = "SELECT * FROM plans ORDER BY budget_year DESC, plan_code ASC";
+    $result_plans = $conn->query($sql_plans);
+}
 
 // --- ดึงข้อมูลปีงบประมาณ (สำหรับ Dropdown ใน Modal) ---
 $sql_years = "SELECT budget_year FROM fiscal_years ORDER BY budget_year DESC";
@@ -111,7 +124,6 @@ $current_page = basename($_SERVER['PHP_SELF']);
             color: #333;
         }
         
-        /* Styles reused from yearbudget.php */
         .top-header { background-color: var(--primary-dark); color: white; padding: 10px 20px; }
         .sub-header { background: linear-gradient(90deg, var(--accent-yellow) 0%, var(--accent-gold) 100%); padding: 8px 20px; font-weight: 700; color: var(--primary-dark); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .navbar-custom { background-color: var(--menu-bg); padding: 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -138,14 +150,13 @@ $current_page = basename($_SERVER['PHP_SELF']);
         
         .modal-header { background-color: var(--primary-dark); color: white; }
         .btn-close { filter: invert(1); }
-          /* [แก้ไข] เพิ่มสไตล์สำหรับเมนู Active ให้เป็นตัวหนาสีดำ */
+        
         .dropdown-item.active, .dropdown-item:active {
             background-color: white; 
-            color: black !important; /* บังคับตัวหนังสือสีดำ */
-            font-weight: bold !important; /* บังคับตัวหนา */
+            color: black !important; 
+            font-weight: bold !important; 
         }
 
-        /* User Info & Logout Button Styles */
         .user-info { font-size: 0.9rem; text-align: right; }
         .user-role { color: var(--accent-yellow); font-weight: 700; text-transform: uppercase; }
         .btn-logout {
@@ -283,12 +294,27 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="container pb-5">
         <div class="content-card">
             
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <div style="width: 150px;"></div> 
-                <h2 class="page-title m-0">กำหนดแผนงาน</h2>
-                <button class="btn btn-add" data-bs-toggle="modal" data-bs-target="#addModal">
-                    <i class="fa-solid fa-plus me-1"></i> เพิ่มข้อมูล
-                </button>
+            <div class="row align-items-center mb-4">
+                <div class="col-md-4 text-center text-md-start">
+                    <h2 class="page-title m-0 text-start">กำหนดแผนงาน</h2>
+                </div>
+                <div class="col-md-8">
+                    <div class="d-flex justify-content-md-end justify-content-center align-items-center gap-2 flex-wrap">
+                        <form action="plan.php" method="GET" class="d-flex" role="search">
+                            <div class="input-group">
+                                <input type="text" name="search" class="form-control" placeholder="ค้นหา รหัสแผนงาน..." value="<?php echo htmlspecialchars($search); ?>">
+                                <button class="btn btn-secondary" type="submit"><i class="fa-solid fa-magnifying-glass"></i></button>
+                            </div>
+                            <?php if($search): ?>
+                                <a href="plan.php" class="btn btn-outline-danger ms-2" title="ล้างการค้นหา"><i class="fa-solid fa-xmark"></i></a>
+                            <?php endif; ?>
+                        </form>
+
+                        <button class="btn btn-add ms-2" data-bs-toggle="modal" data-bs-target="#addModal">
+                            <i class="fa-solid fa-plus me-1"></i> เพิ่มข้อมูล
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <div class="table-responsive">
@@ -317,8 +343,8 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                 echo "<td class='td-center'>";
                                 echo '<a href="?delete_id='.$row['id'].'" class="action-btn btn-delete" onclick="return confirm(\'คุณต้องการลบแผนงานรหัส '.$row['plan_code'].' หรือไม่?\')" title="ลบ"><i class="fa-solid fa-trash-can"></i></a>';
                                 echo '<button class="action-btn btn-edit" title="แก้ไข" 
-                                        onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
-                                        <i class="fa-solid fa-pen-to-square"></i>
+                                            onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
+                                            <i class="fa-solid fa-pen-to-square"></i>
                                       </button>';
                                 echo "</td>";
                                 echo "</tr>";

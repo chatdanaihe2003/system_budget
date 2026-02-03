@@ -144,11 +144,11 @@ $current_page = basename($_SERVER['PHP_SELF']);
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
         
-        /* Override Active Dropdown to be White (No Blue) */
+        /* [แก้ไข] Override Active Dropdown ให้เป็นสีดำ ตัวหนา */
         .dropdown-item.active, .dropdown-item:active {
             background-color: white; 
-            color: var(--primary-dark);
-            font-weight: 500;
+            color: black !important; /* บังคับตัวหนังสือสีดำ */
+            font-weight: bold !important; /* บังคับตัวหนา */
         }
 
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
@@ -272,7 +272,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <div class="dropdown">
                 <a href="#" class="nav-link-custom active dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนจ่าย</a>
                 <ul class="dropdown-menu">
-                    <li><a class="dropdown-item active" href="Authorizebudgetexpenditures.php">สั่งจ่ายเงินงบประมาณ</a></li>
+                    <li><a class="dropdown-item <?php echo ($current_page == 'Authorizebudgetexpenditures.php') ? 'active' : ''; ?>" href="Authorizebudgetexpenditures.php">สั่งจ่ายเงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Orderpaymentoutsidethebudget.php">สั่งจ่ายเงินนอกงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Orderpaymentofstaterevenue.php">สั่งจ่ายเงินรายได้แผ่นดิน</a></li>
                     <li><a class="dropdown-item" href="Governmentadvancefunds.php">เงินทดรองราชการ</a></li>

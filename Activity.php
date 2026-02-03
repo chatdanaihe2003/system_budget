@@ -52,12 +52,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- ดึงข้อมูลกิจกรรมหลัก ---
-$sql_activities = "SELECT * FROM activities ORDER BY budget_year DESC, activity_code ASC";
-$result_activities = $conn->query($sql_activities);
+// --- [แก้ไข] ส่วนการดึงข้อมูลและค้นหา ---
+$search = isset($_GET['search']) ? $_GET['search'] : '';
+
+if ($search != "") {
+    // ถ้ามีการค้นหา ให้กรองด้วย activity_code
+    $search_param = "%" . $search . "%";
+    $sql_activities = "SELECT * FROM activities WHERE activity_code LIKE ? ORDER BY budget_year DESC, activity_code ASC";
+    $stmt = $conn->prepare($sql_activities);
+    $stmt->bind_param("s", $search_param);
+    $stmt->execute();
+    $result_activities = $stmt->get_result();
+} else {
+    // ถ้าไม่มีการค้นหา ให้ดึงทั้งหมดตามปกติ
+    $sql_activities = "SELECT * FROM activities ORDER BY budget_year DESC, activity_code ASC";
+    $result_activities = $conn->query($sql_activities);
+}
 
 // --- ดึงข้อมูลปีงบประมาณ (สำหรับ Dropdown) ---
-// ตรวจสอบว่าตาราง fiscal_years มีอยู่จริงหรือไม่ ถ้าไม่มีให้ข้ามไป
 $check_table = $conn->query("SHOW TABLES LIKE 'fiscal_years'");
 $years_options = [];
 if ($check_table->num_rows > 0) {
@@ -303,12 +315,24 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="container pb-5">
         <div class="content-card">
             
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <div style="width: 150px;"></div> 
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                 <h2 class="page-title m-0">กำหนดกิจกรรมหลัก</h2>
-                <button class="btn btn-add" data-bs-toggle="modal" data-bs-target="#addModal">
-                    <i class="fa-solid fa-plus me-1"></i> เพิ่มข้อมูล
-                </button>
+                
+                <div class="d-flex align-items-center">
+                    <form action="Activity.php" method="GET" class="d-flex me-2">
+                        <div class="input-group">
+                            <input type="text" name="search" class="form-control" placeholder="ค้นหารหัส..." value="<?php echo htmlspecialchars($search); ?>">
+                            <button class="btn btn-secondary" type="submit"><i class="fa-solid fa-magnifying-glass"></i></button>
+                        </div>
+                        <?php if($search != ""): ?>
+                            <a href="Activity.php" class="btn btn-outline-danger ms-1 d-flex align-items-center justify-content-center"><i class="fa-solid fa-xmark"></i></a>
+                        <?php endif; ?>
+                    </form>
+
+                    <button class="btn btn-add" data-bs-toggle="modal" data-bs-target="#addModal">
+                        <i class="fa-solid fa-plus me-1"></i> เพิ่มข้อมูล
+                    </button>
+                </div>
             </div>
 
             <div class="info-box">

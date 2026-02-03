@@ -144,11 +144,11 @@ $current_page = basename($_SERVER['PHP_SELF']);
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
         .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
         
-        /* Override Active Dropdown to be White (No Blue) */
+        /* [แก้ไข] Override Active Dropdown ให้เป็นสีดำ ตัวหนา */
         .dropdown-item.active, .dropdown-item:active {
             background-color: white; 
-            color: var(--primary-dark);
-            font-weight: 500;
+            color: black !important;
+            font-weight: bold !important;
         }
 
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
@@ -232,7 +232,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <a href="index.php" class="nav-link-custom">รายการหลัก</a>
             
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['officers.php', 'yearbudget.php', 'plan.php', 'Projectoutcomes.php', 'Activity.php', 'Sourcemoney.php', 'Expensesbudget.php', 'Mainmoney.php', 'Subtypesmoney.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
                     <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
@@ -263,7 +263,9 @@ $current_page = basename($_SERVER['PHP_SELF']);
                     <li><a class="dropdown-item" href="ProjectRefundRegistration.php">***ทะเบียนคืนเงินโครงการ</a></li>
                     <li><a class="dropdown-item" href="TreasuryWithdrawal.php">ทะเบียนขอเบิกเงินคงคลัง</a></li>
                     <li><a class="dropdown-item" href="TreasuryRefundRegister.php">***ทะเบียนคืนเงินคงคลัง</a></li>
-                    <li><a class="dropdown-item" href="Withdrawtheappeal.php">***ยกเลิกฎีกา</a></li>
+                    
+                    <li><a class="dropdown-item <?php echo ($current_page == 'Withdrawtheappeal.php') ? 'active' : ''; ?>" href="Withdrawtheappeal.php">***ยกเลิกฎีกา</a></li>
+                    
                     <li><a class="dropdown-item" href="Fundrolloverregister.php">ทะเบียนเงินกันเหลื่อมปี</a></li>
                 </ul>
             </div>
@@ -369,7 +371,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                 echo "<td class='td-center'>";
                                 echo '<button class="action-btn btn-detail" onclick="openDetailModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')"><i class="fa-solid fa-list-ul"></i></button>';
                                 echo '<a href="?delete_id='.$row['id'].'" class="action-btn btn-delete" onclick="return confirm(\'คุณต้องการลบรายการนี้หรือไม่?\')"><i class="fa-solid fa-trash-can"></i></a>';
-                                echo '<button class="action-btn btn-edit" onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')"><i class="fa-solid fa-pen"></i></button>';
+                                echo '<button class="action-btn btn-edit" onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')"><i class="fa-solid fa-pen-to-square"></i></button>';
                                 echo "</td>";
 
                                 echo "</tr>";

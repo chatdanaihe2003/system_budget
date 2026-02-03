@@ -20,9 +20,22 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
-// --- ดึงข้อมูล ---
-$sql_data = "SELECT * FROM budget_allocation_reports ORDER BY code ASC, activity_name ASC";
-$result_data = $conn->query($sql_data);
+// --- [แก้ไข] ส่วนการดึงข้อมูลและค้นหา ---
+$search = isset($_GET['search']) ? $_GET['search'] : '';
+
+if ($search != "") {
+    // ถ้ามีการค้นหา ให้กรองด้วย code (รหัสโครงการ)
+    $search_param = "%" . $search . "%";
+    $sql_data = "SELECT * FROM budget_allocation_reports WHERE code LIKE ? ORDER BY code ASC, activity_name ASC";
+    $stmt = $conn->prepare($sql_data);
+    $stmt->bind_param("s", $search_param);
+    $stmt->execute();
+    $result_data = $stmt->get_result();
+} else {
+    // ถ้าไม่มีการค้นหา ให้ดึงทั้งหมดตามปกติ
+    $sql_data = "SELECT * FROM budget_allocation_reports ORDER BY code ASC, activity_name ASC";
+    $result_data = $conn->query($sql_data);
+}
 
 // ฟังก์ชันวันที่ไทย (เผื่อใช้ใน Header)
 function thai_date_full($timestamp) {
@@ -269,7 +282,17 @@ $current_page_encoded = urlencode('Budget allocation report.php');
             
             <h2 class="page-title">รายงานการจัดสรรงบประมาณจำแนกตามโครงการ</h2>
 
-            <div class="d-flex justify-content-end mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <form action="Budget allocation report.php" method="GET" class="d-flex">
+                    <div class="input-group input-group-sm">
+                        <input type="text" name="search" class="form-control" placeholder="ค้นหารหัส..." value="<?php echo htmlspecialchars($search); ?>">
+                        <button class="btn btn-secondary" type="submit"><i class="fa-solid fa-magnifying-glass"></i></button>
+                    </div>
+                    <?php if($search != ""): ?>
+                        <a href="Budget allocation report.php" class="btn btn-outline-danger btn-sm ms-1 d-flex align-items-center"><i class="fa-solid fa-xmark"></i></a>
+                    <?php endif; ?>
+                </form>
+
                 <div class="input-group input-group-sm" style="width: auto;">
                     <span class="input-group-text bg-white border-0 fw-bold">ปีงบประมาณ</span>
                     <select class="form-select" style="width: 100px;">
