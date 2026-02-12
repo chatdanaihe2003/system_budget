@@ -20,6 +20,17 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+// --- [ส่วนที่เพิ่มใหม่] ดึงปีงบประมาณที่ทำงานอยู่ (Active Year) ---
+$active_year = date("Y") + 543; // ค่าเริ่มต้น
+$sql_check_active = "SELECT budget_year FROM fiscal_years WHERE is_active = 1 LIMIT 1";
+$result_check_active = $conn->query($sql_check_active);
+
+if ($result_check_active->num_rows > 0) {
+    $row_active = $result_check_active->fetch_assoc();
+    $active_year = $row_active['budget_year'];
+}
+// -------------------------------------------------------------
+
 // --- Logic จัดการข้อมูล (CRUD) ---
 
 // 1. ลบข้อมูล
@@ -47,8 +58,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $amount_net = $amount_request - $amount_tax;
 
     if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        $stmt = $conn->prepare("INSERT INTO treasury_withdrawals (withdrawal_order, doc_date, petition_no, doc_no, period_no, description, amount_request, amount_tax, amount_net) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("isssssddd", $withdrawal_order, $doc_date, $petition_no, $doc_no, $period_no, $description, $amount_request, $amount_tax, $amount_net);
+        // [แก้ไข] เพิ่ม budget_year ลงในคำสั่ง INSERT
+        $stmt = $conn->prepare("INSERT INTO treasury_withdrawals (budget_year, withdrawal_order, doc_date, petition_no, doc_no, period_no, description, amount_request, amount_tax, amount_net) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("iisssssddd", $active_year, $withdrawal_order, $doc_date, $petition_no, $doc_no, $period_no, $description, $amount_request, $amount_tax, $amount_net);
         $stmt->execute();
     } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
         $id = $_POST['edit_id'];
@@ -60,9 +72,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- ดึงข้อมูล ---
-$sql_data = "SELECT * FROM treasury_withdrawals ORDER BY withdrawal_order ASC";
-$result_data = $conn->query($sql_data);
+// --- [แก้ไข] ดึงข้อมูลเฉพาะปี Active ---
+$sql_data = "SELECT * FROM treasury_withdrawals WHERE budget_year = ? ORDER BY withdrawal_order ASC";
+$stmt_data = $conn->prepare($sql_data);
+$stmt_data->bind_param("i", $active_year);
+$stmt_data->execute();
+$result_data = $stmt_data->get_result();
 
 // ตัวแปรยอดรวม
 $total_request = 0;
@@ -98,7 +113,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ทะเบียนขอเบิกเงินคงคลัง - AMSS++</title>
+    <title>ทะเบียนขอเบิกเงินคงคลัง </title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -217,7 +232,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -238,7 +253,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <a href="index.php" class="nav-link-custom">รายการหลัก</a>
             
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['officers.php', 'yearbudget.php', 'plan.php', 'Projectoutcomes.php', 'Activity.php', 'Sourcemoney.php', 'Expensesbudget.php', 'Mainmoney.php', 'Subtypesmoney.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
                     <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
@@ -338,7 +353,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">ทะเบียนขอเบิกเงินคงคลัง ปีงบประมาณ 2568</h2>
+            <h2 class="page-title">ทะเบียนขอเบิกเงินคงคลัง ปีงบประมาณ <?php echo $active_year; ?></h2>
 
             <div class="d-flex justify-content-end mb-3">
                 <button class="btn btn-add" onclick="openAddModal()">
@@ -400,7 +415,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                             echo "</tr>";
 
                         } else {
-                            echo "<tr><td colspan='10' class='text-center py-4 text-muted'>ยังไม่มีข้อมูล</td></tr>";
+                            echo "<tr><td colspan='10' class='text-center py-4 text-muted'>ยังไม่มีข้อมูลในปี $active_year</td></tr>";
                         }
                         ?>
                     </tbody>
@@ -414,7 +429,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header d-block">
-                    <h5 class="modal-title-custom" id="modalTitle">ลงทะเบียน ขอเบิกเงินคงคลัง ปีงบประมาณ 2568</h5>
+                    <h5 class="modal-title-custom" id="modalTitle">ลงทะเบียน ขอเบิกเงินคงคลัง ปีงบประมาณ <?php echo $active_year; ?></h5>
                 </div>
                 <div class="modal-body form-yellow-bg mx-3 mb-3">
                     <form action="TreasuryWithdrawal.php" method="POST">
@@ -491,7 +506,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
         function openAddModal() {
             document.getElementById('form_action').value = 'add';
             document.getElementById('edit_id').value = '';
-            document.getElementById('modalTitle').innerHTML = 'ลงทะเบียน ขอเบิกเงินคงคลัง ปีงบประมาณ 2568';
+            document.getElementById('modalTitle').innerHTML = 'ลงทะเบียน ขอเบิกเงินคงคลัง ปีงบประมาณ <?php echo $active_year; ?>';
             document.querySelector('form').reset();
             
             var myModal = new bootstrap.Modal(document.getElementById('addModal'));

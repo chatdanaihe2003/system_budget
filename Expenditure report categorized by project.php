@@ -163,7 +163,7 @@ $current_page_encoded = urlencode('Expenditure report categorized by project.php
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -282,7 +282,7 @@ $current_page_encoded = urlencode('Expenditure report categorized by project.php
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">รายงานการใช้จ่ายจำแนกตามโครงการ ปีงบประมาณ 2568</h2>
+            <h2 class="page-title">รายงานการใช้จ่ายจำแนกตามโครงการ ปีงบประมาณ </h2>
 
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <form action="Expenditure report categorized by project.php" method="GET" class="d-flex">

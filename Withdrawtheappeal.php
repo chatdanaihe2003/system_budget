@@ -1,7 +1,7 @@
 <?php
 session_start(); // 1. เริ่มต้น Session
 
-// 2. ตรวจสอบว่าได้ Login หรือยัง ถ้ายังให้เด้งไปหน้า Login
+// 2. ตรวจสอบว่าได้ Login หรือยัง
 if (!isset($_SESSION['user_id'])) {
     header("Location: Login.php");
     exit();
@@ -20,6 +20,16 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+// --- [ส่วนที่เชื่อมโยงกับ yearbudget.php] ดึงปีงบประมาณ Active ---
+$active_year = date("Y") + 543;
+$sql_check_active = "SELECT budget_year FROM fiscal_years WHERE is_active = 1 LIMIT 1";
+$result_check_active = $conn->query($sql_check_active);
+
+if ($result_check_active->num_rows > 0) {
+    $row_active = $result_check_active->fetch_assoc();
+    $active_year = $row_active['budget_year'];
+}
+
 // --- Logic จัดการข้อมูล (CRUD) ---
 
 // 1. ลบข้อมูล
@@ -28,7 +38,7 @@ if (isset($_GET['delete_id'])) {
     $stmt = $conn->prepare("DELETE FROM treasury_refunds WHERE id = ?");
     $stmt->bind_param("i", $id);
     $stmt->execute();
-    header("Location: TreasuryRefundRegister.php");
+    header("Location: Withdrawtheappeal.php");
     exit();
 }
 
@@ -37,40 +47,39 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // รับค่าจากฟอร์ม
     $refund_order = $_POST['refund_order'];
     $doc_date = $_POST['doc_date'];
-    $doc_no = $_POST['doc_no'];
-    $period_no = $_POST['period_no'];
-    $description = $_POST['description'];
-    $amount = $_POST['amount'];
+    $doc_no = $_POST['doc_no'];     // ใช้เก็บ เลขที่เอกสารอ้างอิง
+    $period_no = $_POST['period_no']; // ใช้เก็บ เลขฎีกา
+    $description = $_POST['description']; // ใช้เก็บ สาเหตุการยกเลิก
 
     if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        $stmt = $conn->prepare("INSERT INTO treasury_refunds (refund_order, doc_date, doc_no, period_no, description, amount) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("issssd", $refund_order, $doc_date, $doc_no, $period_no, $description, $amount);
+        $stmt = $conn->prepare("INSERT INTO treasury_refunds (budget_year, refund_order, doc_date, doc_no, period_no, description) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("iissss", $active_year, $refund_order, $doc_date, $doc_no, $period_no, $description);
         $stmt->execute();
     } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
         $id = $_POST['edit_id'];
-        $stmt = $conn->prepare("UPDATE treasury_refunds SET refund_order=?, doc_date=?, doc_no=?, period_no=?, description=?, amount=? WHERE id=?");
-        $stmt->bind_param("issssdi", $refund_order, $doc_date, $doc_no, $period_no, $description, $amount, $id);
+        $stmt = $conn->prepare("UPDATE treasury_refunds SET refund_order=?, doc_date=?, doc_no=?, period_no=?, description=? WHERE id=?");
+        $stmt->bind_param("issssi", $refund_order, $doc_date, $doc_no, $period_no, $description, $id);
         $stmt->execute();
     }
-    header("Location: TreasuryRefundRegister.php");
+    header("Location: Withdrawtheappeal.php");
     exit();
 }
 
 // --- ดึงข้อมูล ---
-$sql_data = "SELECT * FROM treasury_refunds ORDER BY refund_order ASC";
-$result_data = $conn->query($sql_data);
+$sql_data = "SELECT * FROM treasury_refunds WHERE budget_year = ? ORDER BY refund_order ASC";
+$stmt_data = $conn->prepare($sql_data);
+$stmt_data->bind_param("i", $active_year);
+$stmt_data->execute();
+$result_data = $stmt_data->get_result();
 
-// ตัวแปรยอดรวม
-$total_amount = 0;
-
-// ฟังก์ชันวันที่ไทยย่อ
-function thai_date_short($date_str) {
+// ฟังก์ชันวันที่ไทย (ปรับรูปแบบให้เป็น 13มค2569 ตามที่เคยคุยกัน หรือจะเปลี่ยนเป็นแบบเต็มก็ได้ครับ)
+function thai_date_short_img($date_str) {
     if(!$date_str || $date_str == '0000-00-00') return "";
     $timestamp = strtotime($date_str);
     $thai_month_arr = array("0"=>"","1"=>"ม.ค.","2"=>"ก.พ.","3"=>"มี.ค.","4"=>"เม.ย.","5"=>"พ.ค.","6"=>"มิ.ย.","7"=>"ก.ค.","8"=>"ส.ค.","9"=>"ก.ย.","10"=>"ต.ค.","11"=>"พ.ย.","12"=>"ธ.ค.");
     $d = str_pad(date("j", $timestamp), 2, '0', STR_PAD_LEFT); 
     $m = date("n", $timestamp);
-    $y = date("Y", $timestamp) + 543; 
+    $y = date("Y", $timestamp) + 543;
     return "$d{$thai_month_arr[$m]}$y"; 
 }
 
@@ -92,7 +101,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ทะเบียนเงินคืนคลัง - AMSS++</title>
+    <title>ทะเบียนยกเลิกฎีกา - AMSS++</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -197,7 +206,6 @@ $current_page = basename($_SERVER['PHP_SELF']);
         .action-btn { border: none; background: none; cursor: pointer; transition: 0.2s; font-size: 1rem; padding: 0; }
         .btn-edit { color: #0d6efd; font-size: 1.1rem; }
         .btn-delete { color: #dc3545; font-size: 1.1rem; }
-        .btn-detail { color: #6c757d; font-size: 1.1rem; }
         .action-btn:hover { transform: scale(1.2); }
 
         /* Modal Styles */
@@ -211,7 +219,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -225,7 +233,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
         </div>
         </div>
 
-    <div class="sub-header">ทะเบียนเงินคืนคลัง</div>
+    <div class="sub-header">ทะเบียนยกเลิกฎีกา</div>
 
     <div class="navbar-custom">
         <div class="container-fluid d-flex flex-wrap">
@@ -332,11 +340,11 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">ทะเบียนเงินคืนคลัง ปีงบประมาณ 2568</h2>
+            <h2 class="page-title">ทะเบียนฎีกาที่ยกเลิก ปีงบประมาณ <?php echo $active_year; ?></h2>
 
             <div class="d-flex align-items-center mb-2">
                 <button class="btn btn-add" onclick="openAddModal()">
-                    ลงทะเบียน
+                    เพิ่มข้อมูล
                 </button>
             </div>
 
@@ -346,46 +354,32 @@ $current_page = basename($_SERVER['PHP_SELF']);
                         <tr>
                             <th style="width: 5%;">ที่</th>
                             <th style="width: 10%;">ว/ด/ป</th>
-                            <th style="width: 15%;">ที่เอกสาร</th>
-                            <th style="width: 10%;">ใบงวด</th>
-                            <th style="width: 35%;">รายการ</th>
-                            <th style="width: 12%;">จำนวนเงิน</th>
-                            <th style="width: 8%;">จัดการ</th>
+                            <th style="width: 10%;">ฎีกา</th>
+                            <th style="width: 20%;">เลขที่เอกสารอ้างอิง</th>
+                            <th style="width: 45%;">สาเหตุการยกเลิก</th>
+                            <th style="width: 10%;">จัดการ</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php 
-                        if ($result_data->num_rows > 0) {
+                        if ($result_data && $result_data->num_rows > 0) {
                             while($row = $result_data->fetch_assoc()) {
-                                $total_amount += $row['amount'];
-                                
                                 echo "<tr>";
                                 echo "<td class='td-center'>" . $row['refund_order'] . "</td>";
-                                echo "<td class='td-center'>" . thai_date_short($row['doc_date']) . "</td>";
-                                echo "<td class='td-left'>" . $row['doc_no'] . "</td>";
+                                echo "<td class='td-center'>" . thai_date_short_img($row['doc_date']) . "</td>";
                                 echo "<td class='td-center'>" . $row['period_no'] . "</td>";
+                                echo "<td class='td-left'>" . $row['doc_no'] . "</td>";
                                 echo "<td class='td-left'>" . $row['description'] . "</td>";
-                                echo "<td class='td-right'>" . number_format($row['amount'], 2) . "</td>";
                                 
-                                // ปุ่มจัดการ (รายละเอียด, ลบ, แก้ไข)
                                 echo "<td class='td-center'>";
-                                echo '<button class="action-btn btn-detail" onclick="openDetailModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')"><i class="fa-solid fa-list-ul"></i></button>';
                                 echo '<a href="?delete_id='.$row['id'].'" class="action-btn btn-delete" onclick="return confirm(\'คุณต้องการลบรายการนี้หรือไม่?\')"><i class="fa-solid fa-trash-can"></i></a>';
                                 echo '<button class="action-btn btn-edit" onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')"><i class="fa-solid fa-pen-to-square"></i></button>';
                                 echo "</td>";
 
                                 echo "</tr>";
                             }
-                            
-                            // Row รวมยอดสุดท้าย
-                            echo "<tr class='total-row'>";
-                            echo "<td colspan='5' class='text-center'>รวม</td>";
-                            echo "<td class='td-right'>" . number_format($total_amount, 2) . "</td>";
-                            echo "<td></td>";
-                            echo "</tr>";
-
                         } else {
-                            echo "<tr><td colspan='7' class='text-center py-4 text-muted'>ยังไม่มีข้อมูล</td></tr>";
+                            echo "<tr><td colspan='6' class='text-center py-4 text-muted'>ยังไม่มีข้อมูลในปี $active_year</td></tr>";
                         }
                         ?>
                     </tbody>
@@ -399,10 +393,10 @@ $current_page = basename($_SERVER['PHP_SELF']);
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header d-block">
-                    <h5 class="modal-title-custom" id="modalTitle">ลงทะเบียน เงินคืนคลัง ปีงบประมาณ 2568</h5>
+                    <h5 class="modal-title-custom" id="modalTitle">ลงทะเบียน ยกเลิกฎีกา ปีงบประมาณ <?php echo $active_year; ?></h5>
                 </div>
                 <div class="modal-body form-yellow-bg mx-3 mb-3">
-                    <form action="TreasuryRefundRegister.php" method="POST">
+                    <form action="Withdrawtheappeal.php" method="POST">
                         <input type="hidden" name="action" id="form_action" value="add">
                         <input type="hidden" name="edit_id" id="edit_id">
 
@@ -414,39 +408,31 @@ $current_page = basename($_SERVER['PHP_SELF']);
                         </div>
 
                         <div class="row mb-2">
-                            <div class="col-md-3 form-label-custom">วดป</div>
+                            <div class="col-md-3 form-label-custom">ว/ด/ป</div>
                             <div class="col-md-3">
                                 <input type="date" name="doc_date" id="doc_date" class="form-control form-control-sm" value="<?php echo date('Y-m-d'); ?>" required>
                             </div>
                         </div>
 
                         <div class="row mb-2">
-                            <div class="col-md-3 form-label-custom">ที่เอกสาร</div>
-                            <div class="col-md-4">
-                                <input type="text" name="doc_no" id="doc_no" class="form-control form-control-sm" required>
-                            </div>
-                        </div>
-
-                        <div class="row mb-2">
-                            <div class="col-md-3 form-label-custom">ใบงวด</div>
+                            <div class="col-md-3 form-label-custom">ฎีกา</div>
                             <div class="col-md-3">
                                 <input type="text" name="period_no" id="period_no" class="form-control form-control-sm" required>
                             </div>
                         </div>
 
                         <div class="row mb-2">
-                            <div class="col-md-3 form-label-custom">รายการ</div>
-                            <div class="col-md-8">
-                                <input type="text" name="description" id="description" class="form-control form-control-sm" required>
+                            <div class="col-md-3 form-label-custom">เลขที่เอกสารอ้างอิง</div>
+                            <div class="col-md-4">
+                                <input type="text" name="doc_no" id="doc_no" class="form-control form-control-sm" required>
                             </div>
                         </div>
 
                         <div class="row mb-2">
-                            <div class="col-md-3 form-label-custom">จำนวนเงิน</div>
-                            <div class="col-md-3">
-                                <input type="number" step="0.01" name="amount" id="amount" class="form-control form-control-sm" required>
+                            <div class="col-md-3 form-label-custom">สาเหตุการยกเลิก</div>
+                            <div class="col-md-8">
+                                <input type="text" name="description" id="description" class="form-control form-control-sm" required>
                             </div>
-                            <div class="col-md-1">บาท</div>
                         </div>
 
                         <div class="text-center mt-4">
@@ -459,35 +445,12 @@ $current_page = basename($_SERVER['PHP_SELF']);
         </div>
     </div>
 
-    <div class="modal fade" id="detailModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header d-block">
-                    <h5 class="modal-title-custom">รายละเอียดเงินคืนคลัง</h5>
-                </div>
-                <div class="modal-body form-yellow-bg mx-3 mb-3">
-                    <div class="row mb-2">
-                        <div class="col-md-3 form-label-custom">รายการ :</div>
-                        <div class="col-md-9" id="view_description"></div>
-                    </div>
-                    <div class="row mb-2">
-                        <div class="col-md-3 form-label-custom">จำนวนเงิน :</div>
-                        <div class="col-md-9" id="view_amount"></div>
-                    </div>
-                    <div class="text-center mt-3">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         function openAddModal() {
             document.getElementById('form_action').value = 'add';
             document.getElementById('edit_id').value = '';
-            document.getElementById('modalTitle').innerHTML = 'ลงทะเบียน เงินคืนคลัง ปีงบประมาณ 2568';
+            document.getElementById('modalTitle').innerHTML = 'ลงทะเบียน ยกเลิกฎีกา ปีงบประมาณ <?php echo $active_year; ?>';
             document.querySelector('form').reset();
             
             var myModal = new bootstrap.Modal(document.getElementById('addModal'));
@@ -497,23 +460,15 @@ $current_page = basename($_SERVER['PHP_SELF']);
         function openEditModal(data) {
             document.getElementById('form_action').value = 'edit';
             document.getElementById('edit_id').value = data.id;
-            document.getElementById('modalTitle').innerHTML = 'แก้ไข เงินคืนคลัง';
+            document.getElementById('modalTitle').innerHTML = 'แก้ไข ยกเลิกฎีกา';
             
             document.getElementById('refund_order').value = data.refund_order;
             document.getElementById('doc_date').value = data.doc_date;
-            document.getElementById('doc_no').value = data.doc_no;
-            document.getElementById('period_no').value = data.period_no;
-            document.getElementById('description').value = data.description;
-            document.getElementById('amount').value = data.amount;
+            document.getElementById('period_no').value = data.period_no; // ฎีกา
+            document.getElementById('doc_no').value = data.doc_no;       // เอกสารอ้างอิง
+            document.getElementById('description').value = data.description; // สาเหตุ
 
             var myModal = new bootstrap.Modal(document.getElementById('addModal'));
-            myModal.show();
-        }
-
-        function openDetailModal(data) {
-            document.getElementById('view_description').innerText = data.description;
-            document.getElementById('view_amount').innerText = parseFloat(data.amount).toLocaleString('th-TH', {minimumFractionDigits: 2}) + ' บาท';
-            var myModal = new bootstrap.Modal(document.getElementById('detailModal'));
             myModal.show();
         }
     </script>

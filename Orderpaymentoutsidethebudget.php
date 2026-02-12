@@ -20,14 +20,47 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+// --- [ส่วนที่เพิ่มใหม่] ดึงปีงบประมาณที่ทำงานอยู่ (Active Year) ---
+$active_year = date("Y") + 543; // ค่าเริ่มต้น
+$sql_check_active = "SELECT budget_year FROM fiscal_years WHERE is_active = 1 LIMIT 1";
+$result_check_active = $conn->query($sql_check_active);
+
+if ($result_check_active->num_rows > 0) {
+    $row_active = $result_check_active->fetch_assoc();
+    $active_year = $row_active['budget_year'];
+}
+// -------------------------------------------------------------
+
 // --- Logic for Data Management (CRUD) ---
 
-// 1. Delete Data
+// 1. Delete Data (แก้ไข: ลบข้อมูลที่เชื่อมโยงด้วย)
 if (isset($_GET['delete_id'])) {
     $id = $_GET['delete_id'];
-    $stmt = $conn->prepare("DELETE FROM off_budget_expenditures WHERE id = ?");
-    $stmt->bind_param("i", $id);
-    $stmt->execute();
+
+    // [Step 1] ดึงข้อมูล exp_order และ budget_year ก่อนลบ เพื่อเอาไปลบในอีกตาราง
+    $stmt_get = $conn->prepare("SELECT exp_order, budget_year FROM off_budget_expenditures WHERE id = ?");
+    $stmt_get->bind_param("i", $id);
+    $stmt_get->execute();
+    $result_get = $stmt_get->get_result();
+    
+    if ($result_get->num_rows > 0) {
+        $row_del = $result_get->fetch_assoc();
+        $del_exp_order = $row_del['exp_order'];
+        $del_budget_year = $row_del['budget_year'];
+
+        // [Step 2] ลบข้อมูลจากตารางหลัก (off_budget_expenditures)
+        $stmt = $conn->prepare("DELETE FROM off_budget_expenditures WHERE id = ?");
+        $stmt->bind_param("i", $id);
+        
+        if ($stmt->execute()) {
+            // [Step 3] ลบข้อมูลที่เชื่อมโยงในตาราง approved_main_payments
+            // ลบโดยอ้างอิงจาก pay_order, budget_year และประเภทเงิน "เงินนอกงบประมาณ"
+            $stmt_link_del = $conn->prepare("DELETE FROM approved_main_payments WHERE pay_order = ? AND budget_year = ? AND payment_type = 'เงินนอกงบประมาณ'");
+            $stmt_link_del->bind_param("ii", $del_exp_order, $del_budget_year);
+            $stmt_link_del->execute();
+        }
+    }
+
     header("Location: Orderpaymentoutsidethebudget.php");
     exit();
 }
@@ -43,22 +76,57 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $amount = $_POST['amount'];
 
     if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        $stmt = $conn->prepare("INSERT INTO off_budget_expenditures (exp_order, doc_date, doc_no, ref_withdraw_no, ref_petition_no, description, amount) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("isssssd", $exp_order, $doc_date, $doc_no, $ref_withdraw_no, $ref_petition_no, $description, $amount);
+        // [ส่วนที่ 1] บันทึกลงตารางหลัก (off_budget_expenditures)
+        $stmt = $conn->prepare("INSERT INTO off_budget_expenditures (budget_year, exp_order, doc_date, doc_no, ref_withdraw_no, ref_petition_no, description, amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("iisssssd", $active_year, $exp_order, $doc_date, $doc_no, $ref_withdraw_no, $ref_petition_no, $description, $amount);
         $stmt->execute();
+
+        // [ส่วนที่ 2] ส่งข้อมูลไปที่หน้า Approvedformaintypepayment.php (ตาราง approved_main_payments)
+        $payment_type_fixed = 'เงินนอกงบประมาณ'; // ระบุว่าเป็นเงินนอกงบประมาณ
+        $approval_status_init = 'pending';    
+        $payment_status_init = 'unpaid';      
+
+        $sql_link = "INSERT INTO approved_main_payments (budget_year, pay_order, doc_date, doc_no, ref_withdraw_no, ref_petition_no, description, amount, payment_type, approval_status, payment_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        $stmt_link = $conn->prepare($sql_link);
+        
+        if ($stmt_link) {
+            $stmt_link->bind_param("iisssssdsss", $active_year, $exp_order, $doc_date, $doc_no, $ref_withdraw_no, $ref_petition_no, $description, $amount, $payment_type_fixed, $approval_status_init, $payment_status_init);
+            $stmt_link->execute();
+        }
+
     } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
         $id = $_POST['edit_id'];
+
+        // ดึงข้อมูลเดิมก่อนแก้ไข เพื่อเอา exp_order เดิมไปแก้ไขในตารางเชื่อมโยง
+        $stmt_old = $conn->prepare("SELECT exp_order, budget_year FROM off_budget_expenditures WHERE id = ?");
+        $stmt_old->bind_param("i", $id);
+        $stmt_old->execute();
+        $res_old = $stmt_old->get_result();
+        $old_data = $res_old->fetch_assoc();
+        $old_exp_order = $old_data['exp_order'];
+        $current_budget_year = $old_data['budget_year'];
+
+        // อัปเดตตารางหลัก
         $stmt = $conn->prepare("UPDATE off_budget_expenditures SET exp_order=?, doc_date=?, doc_no=?, ref_withdraw_no=?, ref_petition_no=?, description=?, amount=? WHERE id=?");
         $stmt->bind_param("isssssdi", $exp_order, $doc_date, $doc_no, $ref_withdraw_no, $ref_petition_no, $description, $amount, $id);
-        $stmt->execute();
+        
+        if ($stmt->execute()) {
+            // อัปเดตข้อมูลในตาราง approved_main_payments ให้ตรงกัน (เฉพาะประเภทเงินนอกงบประมาณ)
+            $stmt_update_link = $conn->prepare("UPDATE approved_main_payments SET pay_order=?, doc_date=?, doc_no=?, ref_withdraw_no=?, ref_petition_no=?, description=?, amount=? WHERE pay_order=? AND budget_year=? AND payment_type='เงินนอกงบประมาณ'");
+            $stmt_update_link->bind_param("isssssdii", $exp_order, $doc_date, $doc_no, $ref_withdraw_no, $ref_petition_no, $description, $amount, $old_exp_order, $current_budget_year);
+            $stmt_update_link->execute();
+        }
     }
     header("Location: Orderpaymentoutsidethebudget.php");
     exit();
 }
 
-// --- Fetch Data ---
-$sql_data = "SELECT * FROM off_budget_expenditures ORDER BY exp_order ASC";
-$result_data = $conn->query($sql_data);
+// --- [แก้ไข] ดึงข้อมูลเฉพาะปี Active ---
+$sql_data = "SELECT * FROM off_budget_expenditures WHERE budget_year = ? ORDER BY exp_order ASC";
+$stmt_data = $conn->prepare($sql_data);
+$stmt_data->bind_param("i", $active_year);
+$stmt_data->execute();
+$result_data = $stmt_data->get_result();
 
 $total_amount = 0;
 
@@ -153,6 +221,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
         
+        /* Title Color */
         .page-title { color: #008080; font-weight: 700; text-align: center; margin-bottom: 25px; font-size: 1.4rem; } 
         
         /* --- Table Styles (Dark Gold / White) --- */
@@ -212,7 +281,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -233,7 +302,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <a href="index.php" class="nav-link-custom">รายการหลัก</a>
             
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['officers.php', 'yearbudget.php', 'plan.php', 'Projectoutcomes.php', 'Activity.php', 'Sourcemoney.php', 'Expensesbudget.php', 'Mainmoney.php', 'Subtypesmoney.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
                     <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
@@ -248,7 +317,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </div>
             
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Budgetallocation.php', 'Receivebudget.php', 'Receiveoffbudget.php', 'Receivenational.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ทะเบียนรับ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนรับ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budgetallocation.php">รับการจัดสรรงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Receivebudget.php">รับเงินงบประมาณ</a></li>
@@ -258,7 +327,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </div>
 
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['RequestforWithdrawalProjectLoan.php', 'ProjectRefundRegistration.php', 'TreasuryWithdrawal.php', 'TreasuryRefundRegister.php', 'Withdrawtheappeal.php', 'Fundrolloverregister.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ทะเบียนขอเบิก</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนขอเบิก</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="RequestforWithdrawalProjectLoan.php">ทะเบียนขอเบิก/ขอยืมเงินโครงการ</a></li>
                     <li><a class="dropdown-item" href="ProjectRefundRegistration.php">***ทะเบียนคืนเงินโครงการ</a></li>
@@ -331,7 +400,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">ทะเบียนสั่งจ่ายเงินนอกงบประมาณ ปีงบประมาณ 2568</h2>
+            <h2 class="page-title">ทะเบียนสั่งจ่ายเงินนอกงบประมาณ ปีงบประมาณ <?php echo $active_year; ?></h2>
 
             <div class="d-flex align-items-center mb-2">
                 <button class="btn btn-add" onclick="openAddModal()">
@@ -405,7 +474,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                             echo "</tr>";
 
                         } else {
-                            echo "<tr><td colspan='12' class='text-center py-4 text-muted'>ยังไม่มีข้อมูล</td></tr>";
+                            echo "<tr><td colspan='12' class='text-center py-4 text-muted'>ยังไม่มีข้อมูลในปี $active_year</td></tr>";
                         }
                         ?>
                     </tbody>
@@ -419,7 +488,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header d-block">
-                    <h5 class="modal-title-custom" id="modalTitle">ลงทะเบียน สั่งจ่ายเงินนอกงบประมาณ</h5>
+                    <h5 class="modal-title-custom" id="modalTitle">ลงทะเบียน สั่งจ่ายเงินนอกงบประมาณ ปีงบประมาณ <?php echo $active_year; ?></h5>
                 </div>
                 <div class="modal-body form-yellow-bg mx-3 mb-3">
                     <form action="Orderpaymentoutsidethebudget.php" method="POST">
@@ -514,7 +583,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
         function openAddModal() {
             document.getElementById('form_action').value = 'add';
             document.getElementById('edit_id').value = '';
-            document.getElementById('modalTitle').innerHTML = 'ลงทะเบียน สั่งจ่ายเงินนอกงบประมาณ';
+            document.getElementById('modalTitle').innerHTML = 'ลงทะเบียน สั่งจ่ายเงินนอกงบประมาณ ปีงบประมาณ <?php echo $active_year; ?>';
             document.querySelector('form').reset();
             
             var myModal = new bootstrap.Modal(document.getElementById('addModal'));

@@ -20,6 +20,17 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+// --- [ส่วนที่เพิ่มใหม่] ดึงปีงบประมาณที่ทำงานอยู่ (Active Year) ---
+$active_year = date("Y") + 543; // ค่าเริ่มต้น (เผื่อกรณีไม่มีการตั้งค่า)
+$sql_check_active = "SELECT budget_year FROM fiscal_years WHERE is_active = 1 LIMIT 1";
+$result_check_active = $conn->query($sql_check_active);
+
+if ($result_check_active->num_rows > 0) {
+    $row_active = $result_check_active->fetch_assoc();
+    $active_year = $row_active['budget_year'];
+}
+// -------------------------------------------------------------
+
 // --- Logic จัดการข้อมูล (CRUD) ---
 
 // 1. ลบข้อมูล
@@ -53,28 +64,32 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- [แก้ไข] ส่วนการดึงข้อมูลและค้นหา ---
+// --- [แก้ไข] ส่วนการดึงข้อมูลและค้นหา (กรองตาม Active Year) ---
 $search = isset($_GET['search']) ? $_GET['search'] : '';
 
 if ($search != "") {
-    // ถ้ามีการค้นหา ให้กรองด้วย subtype_code
+    // ถ้ามีการค้นหา ให้กรองด้วย subtype_code และปี Active
     $search_param = "%" . $search . "%";
     $sql_sub = "SELECT s.*, m.type_name AS main_type_name 
                 FROM money_types_sub s 
                 LEFT JOIN money_types_main m ON s.main_type_id = m.id 
-                WHERE s.subtype_code LIKE ? 
-                ORDER BY s.budget_year DESC, s.subtype_code ASC";
+                WHERE s.subtype_code LIKE ? AND s.budget_year = ?
+                ORDER BY s.subtype_code ASC";
     $stmt = $conn->prepare($sql_sub);
-    $stmt->bind_param("s", $search_param);
+    $stmt->bind_param("si", $search_param, $active_year);
     $stmt->execute();
     $result_sub = $stmt->get_result();
 } else {
-    // ถ้าไม่มีการค้นหา ให้ดึงทั้งหมดตามปกติ
+    // ถ้าไม่มีการค้นหา ให้ดึงเฉพาะปี Active
     $sql_sub = "SELECT s.*, m.type_name AS main_type_name 
                 FROM money_types_sub s 
                 LEFT JOIN money_types_main m ON s.main_type_id = m.id 
-                ORDER BY s.budget_year DESC, s.subtype_code ASC";
-    $result_sub = $conn->query($sql_sub);
+                WHERE s.budget_year = ?
+                ORDER BY s.subtype_code ASC";
+    $stmt = $conn->prepare($sql_sub);
+    $stmt->bind_param("i", $active_year);
+    $stmt->execute();
+    $result_sub = $stmt->get_result();
 }
 
 // --- ดึงข้อมูลสำหรับ Dropdown ---
@@ -208,7 +223,10 @@ $current_page = basename($_SERVER['PHP_SELF']);
         </div>
         </div>
 
-    <div class="sub-header">รายการ ประเภท(ย่อย)ของเงิน</div>
+    <div class="sub-header d-flex justify-content-between">
+        <span>รายการ ประเภท(ย่อย)ของเงิน</span>
+        <span>ปีงบประมาณที่ทำงาน: <strong><?php echo $active_year; ?></strong></span>
+    </div>
 
    <div class="navbar-custom">
         <div class="container-fluid d-flex flex-wrap">
@@ -369,7 +387,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                 echo "</tr>";
                             }
                         } else {
-                            echo "<tr><td colspan='6' class='text-center py-4 text-muted'>ยังไม่มีข้อมูลประเภท(ย่อย)ของเงิน</td></tr>";
+                            echo "<tr><td colspan='6' class='text-center py-4 text-muted'>ยังไม่มีข้อมูลประเภท(ย่อย)ของเงิน ในปี $active_year</td></tr>";
                         }
                         ?>
                     </tbody>
@@ -393,7 +411,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                             <label class="form-label fw-bold">ปีงบประมาณ</label>
                             <select name="budget_year" class="form-select" required>
                                 <?php foreach($years_options as $y): ?>
-                                    <option value="<?php echo $y; ?>"><?php echo $y; ?></option>
+                                    <option value="<?php echo $y; ?>" <?php echo ($y == $active_year) ? 'selected' : ''; ?>><?php echo $y; ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>

@@ -161,7 +161,7 @@ $current_page_encoded = urlencode('Budget allocation report.php');
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>

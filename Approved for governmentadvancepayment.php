@@ -20,19 +20,30 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+// --- [ส่วนที่เพิ่มใหม่] ดึงปีงบประมาณที่ทำงานอยู่ (Active Year) ---
+$active_year = date("Y") + 543; // ค่าเริ่มต้น
+$sql_check_active = "SELECT budget_year FROM fiscal_years WHERE is_active = 1 LIMIT 1";
+$result_check_active = $conn->query($sql_check_active);
+
+if ($result_check_active->num_rows > 0) {
+    $row_active = $result_check_active->fetch_assoc();
+    $active_year = $row_active['budget_year'];
+}
+// -------------------------------------------------------------
+
 // --- Logic จัดการข้อมูล (CRUD) ---
 
-// 1. ลบข้อมูล
+// 1. ลบข้อมูล (แก้ไขชื่อตารางเป็น approved_gov_advance_payments)
 if (isset($_GET['delete_id'])) {
     $id = $_GET['delete_id'];
-    $stmt = $conn->prepare("DELETE FROM approved_advance_payments WHERE id = ?");
+    $stmt = $conn->prepare("DELETE FROM approved_gov_advance_payments WHERE id = ?");
     $stmt->bind_param("i", $id);
     $stmt->execute();
     header("Location: Approved for governmentadvancepayment.php");
     exit();
 }
 
-// 2. เปลี่ยนสถานะ (Toggle Status)
+// 2. เปลี่ยนสถานะ (Toggle Status) (แก้ไขชื่อคอลัมน์ status เป็น approval_status)
 if (isset($_GET['toggle_status_id'])) {
     $id = $_GET['toggle_status_id'];
     $current_status = $_GET['current_status'];
@@ -42,30 +53,33 @@ if (isset($_GET['toggle_status_id'])) {
     elseif ($current_status == 'approved') $new_status = 'rejected';
     elseif ($current_status == 'rejected') $new_status = 'pending';
 
-    $stmt = $conn->prepare("UPDATE approved_advance_payments SET status = ? WHERE id = ?");
+    $stmt = $conn->prepare("UPDATE approved_gov_advance_payments SET approval_status = ? WHERE id = ?");
     $stmt->bind_param("si", $new_status, $id);
     $stmt->execute();
     header("Location: Approved for governmentadvancepayment.php");
     exit();
 }
 
-// 3. เพิ่ม หรือ แก้ไขข้อมูล
+// 3. เพิ่ม หรือ แก้ไขข้อมูล (แก้ไขให้บันทึกลงตารางใหม่)
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $pay_order = $_POST['pay_order'];
+    // รับค่าจากฟอร์ม (ชื่อตัวแปรเหมือนเดิม แต่จะแมพเข้าตารางใหม่)
+    $pay_order = $_POST['pay_order']; // จะไปเข้า advance_order
     $doc_date = $_POST['doc_date'];
     $doc_no = $_POST['doc_no'];
     $ref_doc_no = $_POST['ref_doc_no'];
     $description = $_POST['description'];
-    $amount = $_POST['amount'];
-    $status = $_POST['status'];
+    $amount = $_POST['amount'];       // จะไปเข้า loan_amount
+    $status = $_POST['status'];       // จะไปเข้า approval_status
 
     if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        $stmt = $conn->prepare("INSERT INTO approved_advance_payments (pay_order, doc_date, doc_no, ref_doc_no, description, amount, status) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("issssds", $pay_order, $doc_date, $doc_no, $ref_doc_no, $description, $amount, $status);
+        // [แก้ไข] เปลี่ยน INSERT INTO approved_gov_advance_payments
+        // แมพ pay_order -> advance_order, amount -> loan_amount, status -> approval_status
+        $stmt = $conn->prepare("INSERT INTO approved_gov_advance_payments (budget_year, advance_order, doc_date, doc_no, ref_doc_no, description, loan_amount, approval_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("iissssds", $active_year, $pay_order, $doc_date, $doc_no, $ref_doc_no, $description, $amount, $status);
         $stmt->execute();
     } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
         $id = $_POST['edit_id'];
-        $stmt = $conn->prepare("UPDATE approved_advance_payments SET pay_order=?, doc_date=?, doc_no=?, ref_doc_no=?, description=?, amount=?, status=? WHERE id=?");
+        $stmt = $conn->prepare("UPDATE approved_gov_advance_payments SET advance_order=?, doc_date=?, doc_no=?, ref_doc_no=?, description=?, loan_amount=?, approval_status=? WHERE id=?");
         $stmt->bind_param("issssdsi", $pay_order, $doc_date, $doc_no, $ref_doc_no, $description, $amount, $status, $id);
         $stmt->execute();
     }
@@ -73,9 +87,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- ดึงข้อมูล ---
-$sql_data = "SELECT * FROM approved_advance_payments ORDER BY pay_order ASC";
-$result_data = $conn->query($sql_data);
+// --- [แก้ไข] ดึงข้อมูลจากตาราง approved_gov_advance_payments ---
+$sql_data = "SELECT * FROM approved_gov_advance_payments WHERE budget_year = ? ORDER BY advance_order ASC";
+$stmt_data = $conn->prepare($sql_data);
+$stmt_data->bind_param("i", $active_year);
+$stmt_data->execute();
+$result_data = $stmt_data->get_result();
 
 // ฟังก์ชันวันที่ไทยย่อ
 function thai_date_short($date_str) {
@@ -99,7 +116,6 @@ function thai_date_full($timestamp) {
 
 // *** เช็คหน้าปัจจุบัน ***
 $current_page = basename($_SERVER['PHP_SELF']);
-// หมายเหตุ: เนื่องจากชื่อไฟล์มีเว้นวรรค PHP_SELF อาจจะ return เป็น %20 ให้ใช้ชื่อไฟล์ตรงๆ ในการเช็ค active จะแม่นยำกว่า
 $current_page_check = 'Approved for governmentadvancepayment.php';
 ?>
 
@@ -229,7 +245,7 @@ $current_page_check = 'Approved for governmentadvancepayment.php';
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -250,7 +266,7 @@ $current_page_check = 'Approved for governmentadvancepayment.php';
             <a href="index.php" class="nav-link-custom">รายการหลัก</a>
             
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['officers.php', 'yearbudget.php', 'plan.php', 'Projectoutcomes.php', 'Activity.php', 'Sourcemoney.php', 'Expensesbudget.php', 'Mainmoney.php', 'Subtypesmoney.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
                     <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
@@ -265,7 +281,7 @@ $current_page_check = 'Approved for governmentadvancepayment.php';
             </div>
             
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Budgetallocation.php', 'Receivebudget.php', 'Receiveoffbudget.php', 'Receivenational.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ทะเบียนรับ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนรับ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budgetallocation.php">รับการจัดสรรงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Receivebudget.php">รับเงินงบประมาณ</a></li>
@@ -275,7 +291,7 @@ $current_page_check = 'Approved for governmentadvancepayment.php';
             </div>
 
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['RequestforWithdrawalProjectLoan.php', 'ProjectRefundRegistration.php', 'TreasuryWithdrawal.php', 'TreasuryRefundRegister.php', 'Withdrawtheappeal.php', 'Fundrolloverregister.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ทะเบียนขอเบิก</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนขอเบิก</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="RequestforWithdrawalProjectLoan.php">ทะเบียนขอเบิก/ขอยืมเงินโครงการ</a></li>
                     <li><a class="dropdown-item" href="ProjectRefundRegistration.php">***ทะเบียนคืนเงินโครงการ</a></li>
@@ -306,7 +322,7 @@ $current_page_check = 'Approved for governmentadvancepayment.php';
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Off_budget_funds.php">เงินนอกงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
@@ -350,7 +366,7 @@ $current_page_check = 'Approved for governmentadvancepayment.php';
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">อนุมัติจ่ายเงินทดรองราชการ ปีงบประมาณ 2568</h2>
+            <h2 class="page-title">อนุมัติจ่ายเงินทดรองราชการ ปีงบประมาณ <?php echo $active_year; ?></h2>
 
             <div class="d-flex justify-content-end mb-2">
                 <button class="btn btn-add" onclick="openAddModal()">
@@ -378,33 +394,49 @@ $current_page_check = 'Approved for governmentadvancepayment.php';
                         if ($result_data->num_rows > 0) {
                             while($row = $result_data->fetch_assoc()) {
                                 
-                                // กำหนด class สีสถานะ
+                                // [แก้ไข] แมพค่าจากฐานข้อมูลใหม่มาใช้
+                                // advance_order -> pay_order
+                                // loan_amount -> amount
+                                // approval_status -> status
+                                
                                 $status_class = 'status-yellow';
                                 $status_text = 'รอการอนุมัติ';
-                                if($row['status'] == 'approved') { $status_class = 'status-green'; $status_text = 'อนุมัติให้จ่ายเงินได้'; }
-                                elseif($row['status'] == 'rejected') { $status_class = 'status-red'; $status_text = 'ไม่อนุมัติ'; }
+                                if($row['approval_status'] == 'approved') { $status_class = 'status-green'; $status_text = 'อนุมัติให้จ่ายเงินได้'; }
+                                elseif($row['approval_status'] == 'rejected') { $status_class = 'status-red'; $status_text = 'ไม่อนุมัติ'; }
 
                                 echo "<tr>";
-                                echo "<td class='td-center'>" . $row['pay_order'] . "</td>";
+                                echo "<td class='td-center'>" . $row['advance_order'] . "</td>"; // ใช้ advance_order
                                 echo "<td class='td-center'>" . thai_date_short($row['doc_date']) . "</td>";
                                 echo "<td class='td-center'>" . $row['doc_no'] . "</td>";
                                 echo "<td class='td-center text-warning'>" . ($row['ref_doc_no'] ? $row['ref_doc_no'] : '') . "</td>"; 
                                 echo "<td class='td-left'>" . $row['description'] . "</td>";
-                                echo "<td class='td-right'>" . number_format($row['amount'], 2) . "</td>";
+                                echo "<td class='td-right'>" . number_format($row['loan_amount'], 2) . "</td>"; // ใช้ loan_amount
                                 
                                 // รายละเอียด
                                 echo "<td class='td-center'>";
-                                echo '<button class="action-btn btn-detail" onclick="openDetailModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')"><i class="fa-solid fa-list-ul"></i></button>';
+                                // ส่งค่าไปยังฟังก์ชัน JS โดยแปลง Key ให้ตรงกับที่ JS ใช้ในโค้ดเดิม
+                                // JS ใช้: description, amount, status
+                                $js_data = array(
+                                    'id' => $row['id'],
+                                    'pay_order' => $row['advance_order'],
+                                    'doc_date' => $row['doc_date'],
+                                    'doc_no' => $row['doc_no'],
+                                    'ref_doc_no' => $row['ref_doc_no'],
+                                    'description' => $row['description'],
+                                    'amount' => $row['loan_amount'],
+                                    'status' => $row['approval_status']
+                                );
+                                echo '<button class="action-btn btn-detail" onclick="openDetailModal('.htmlspecialchars(json_encode($js_data), ENT_QUOTES, 'UTF-8').')"><i class="fa-solid fa-list-ul"></i></button>';
                                 echo "</td>";
 
                                 // อนุมัติ (Toggle Status)
                                 echo "<td class='td-center'>";
-                                echo '<a href="?toggle_status_id='.$row['id'].'&current_status='.$row['status'].'" title="'.$status_text.'"><div class="status-box '.$status_class.'"></div></a>';
+                                echo '<a href="?toggle_status_id='.$row['id'].'&current_status='.$row['approval_status'].'" title="'.$status_text.'"><div class="status-box '.$status_class.'"></div></a>';
                                 echo "</td>";
 
                                 // แก้ไข
                                 echo "<td class='td-center'>";
-                                echo '<button class="action-btn btn-edit" onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')"><i class="fa-solid fa-pen"></i></button>';
+                                echo '<button class="action-btn btn-edit" onclick="openEditModal('.htmlspecialchars(json_encode($js_data), ENT_QUOTES, 'UTF-8').')"><i class="fa-solid fa-pen"></i></button>';
                                 echo "</td>";
 
                                 echo "</tr>";
@@ -437,7 +469,7 @@ $current_page_check = 'Approved for governmentadvancepayment.php';
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header d-block">
-                    <h5 class="modal-title-custom" id="modalTitle">เพิ่มรายการอนุมัติจ่าย</h5>
+                    <h5 class="modal-title-custom" id="modalTitle">เพิ่มรายการอนุมัติจ่าย ปีงบประมาณ <?php echo $active_year; ?></h5>
                 </div>
                 <div class="modal-body form-yellow-bg mx-3 mb-3">
                     <form action="Approved for governmentadvancepayment.php" method="POST">
@@ -540,7 +572,7 @@ $current_page_check = 'Approved for governmentadvancepayment.php';
         function openAddModal() {
             document.getElementById('form_action').value = 'add';
             document.getElementById('edit_id').value = '';
-            document.getElementById('modalTitle').innerHTML = 'เพิ่มรายการอนุมัติจ่าย';
+            document.getElementById('modalTitle').innerHTML = 'เพิ่มรายการอนุมัติจ่าย ปีงบประมาณ <?php echo $active_year; ?>';
             document.querySelector('#addModal form').reset();
             
             var myModal = new bootstrap.Modal(document.getElementById('addModal'));
@@ -552,6 +584,7 @@ $current_page_check = 'Approved for governmentadvancepayment.php';
             document.getElementById('edit_id').value = data.id;
             document.getElementById('modalTitle').innerHTML = 'แก้ไข รายการอนุมัติจ่าย';
             
+            // ข้อมูลที่ส่งมา JS key ชื่อ pay_order, amount, status
             document.getElementById('pay_order').value = data.pay_order;
             document.getElementById('doc_date').value = data.doc_date;
             document.getElementById('doc_no').value = data.doc_no;

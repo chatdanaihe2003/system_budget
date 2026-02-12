@@ -182,7 +182,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -301,7 +301,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">ตรวจสอบการจ่ายเงินทดรองราชการ - AMSS++</h2>
+            <h2 class="page-title">ตรวจสอบการจ่ายเงินทดรองราชการ </h2>
             <div class="page-pagination">หน้า [1]</div>
 
             <div class="table-responsive">

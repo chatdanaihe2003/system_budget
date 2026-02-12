@@ -157,7 +157,7 @@ $current_page_check = 'Supreme Court Rulings and References for Reimbursement Re
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -275,7 +275,7 @@ $current_page_check = 'Supreme Court Rulings and References for Reimbursement Re
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">ตรวจสอบฎีกากับการอ้างอิงการขอเบิกฯ จำแนกตามฎีกา ปีงบประมาณ 2568</h2>
+            <h2 class="page-title">ตรวจสอบฎีกากับการอ้างอิงการขอเบิกฯ จำแนกตามฎีกา ปีงบประมาณ </h2>
 
             <div class="pagination-container">
                 <a href="?page=1" class="pagination-link">&lt;หน้าแรก</a> 

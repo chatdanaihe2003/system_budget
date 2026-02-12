@@ -135,7 +135,7 @@ $current_page_encoded = urlencode('Daily cash balance report.php');
         
         .page-title { color: #008080; font-weight: 700; text-align: center; margin-bottom: 25px; font-size: 1.4rem; } 
         
-        /* --- Table Styles --- */
+        /* --- Table Styles (Modified to match other pages) --- */
         .table-custom th { 
             background-color: var(--header-gold); 
             color: white; 
@@ -149,45 +149,47 @@ $current_page_encoded = urlencode('Daily cash balance report.php');
         .table-custom td { 
             vertical-align: middle; 
             border-bottom: 1px solid #f0f0f0; 
-            padding: 6px 8px; 
-            font-size: 0.85rem; 
-            background-color: white !important;
+            padding: 8px 8px; 
+            font-size: 0.9rem; 
         }
         
-        /* Row Categories */
+        /* Row Categories - สีครีมทองอ่อนๆ เพื่อแบ่งหมวดหมู่ */
         .category-row td {
-            background-color: #fce4ec !important; /* สีชมพูอ่อนเหมือนในภาพ */
+            background-color: #fff9db !important; /* ครีมเหลืองอ่อนๆ */
             font-weight: bold;
-            color: #333;
+            color: #5d4037;
             text-align: left;
-            padding-left: 10px;
+            padding-left: 15px;
+            border-bottom: 1px solid #eee;
         }
         
+        /* Item Row - สีขาวสะอาด */
         .item-row td {
-            background-color: #ffffe0 !important; /* สีเหลืองอ่อน */
+            background-color: white !important;
+            color: #333;
         }
         
-        /* Footer/Total Row */
+        /* Footer/Total Row - สีเทาอ่อน */
         .total-row td {
-            background-color: #ffcdd2 !important; /* สีแดงอ่อน */
+            background-color: #f8f9fa !important;
             font-weight: bold;
             color: #333;
-            border-top: 2px solid #aaa;
+            border-top: 2px solid #ccc;
         }
 
         .td-center { text-align: center; }
         .td-right { text-align: right; }
-        .td-left { text-align: left; padding-left: 20px; }
+        .td-left { text-align: left; padding-left: 25px !important; } /* ย่อหน้าเข้าไปหน่อยสำหรับรายการย่อย */
         
         /* Filter Form */
         .filter-group { display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; }
-        .form-select-sm { min-width: 80px; }
+        .form-select-sm { min-width: 80px; border-color: #ddd; }
     </style>
 </head>
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>

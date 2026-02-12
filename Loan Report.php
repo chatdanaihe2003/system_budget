@@ -163,7 +163,7 @@ $current_page_encoded = urlencode('Loan Report.php');
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -360,7 +360,7 @@ $current_page_encoded = urlencode('Loan Report.php');
                                 }
                             }
 
-                        } else {
+                        } else { 
                             echo "<tr><td colspan='7' class='text-center py-4 text-muted'>ไม่พบข้อมูล</td></tr>";
                         }
                         ?>

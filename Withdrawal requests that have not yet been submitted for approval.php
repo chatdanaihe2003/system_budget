@@ -165,7 +165,7 @@ $current_page_check = 'Withdrawal requests that have not yet been submitted for 
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -283,7 +283,7 @@ $current_page_check = 'Withdrawal requests that have not yet been submitted for 
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">รายการขอเบิกฯที่ยังไม่ได้วางฎีกา ปีงบประมาณ 2568</h2>
+            <h2 class="page-title">รายการขอเบิกฯที่ยังไม่ได้วางฎีกา ปีงบประมาณ </h2>
 
             <div class="pagination-container">
                 <a href="?page=1" class="pagination-link">&lt;หน้าแรก</a> 

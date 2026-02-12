@@ -140,7 +140,7 @@ $current_page_encoded = urlencode('Check budget allocation.php');
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -259,7 +259,7 @@ $current_page_encoded = urlencode('Check budget allocation.php');
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">ตรวจสอบการจัดสรรงบประมาณ ปีงบประมาณ 2568</h2>
+            <h2 class="page-title">ตรวจสอบการจัดสรรงบประมาณ ปีงบประมาณ </h2>
 
             <div class="table-responsive">
                 <table class="table table-striped table-custom">

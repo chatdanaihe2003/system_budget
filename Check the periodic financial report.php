@@ -153,7 +153,7 @@ $current_page_encoded = urlencode('Check the periodic financial report.php');
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -272,12 +272,13 @@ $current_page_encoded = urlencode('Check the periodic financial report.php');
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">รายงานเงินคงเหลือตามใบงวด ปีงบประมาณ 2568</h2>
+            <h2 class="page-title">รายงานเงินคงเหลือตามใบงวด ปีงบประมาณ</h2>
 
             <div class="d-flex justify-content-end mb-3">
                 <div class="input-group" style="width: auto;">
                     <span class="input-group-text bg-white border-0 fw-bold">ปีงบประมาณ</span>
                     <select class="form-select form-select-sm" style="width: 100px;">
+                        <option value="2569">2569</option>
                         <option value="2568">2568</option>
                         <option value="2567">2567</option>
                     </select>

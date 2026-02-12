@@ -156,7 +156,7 @@ $current_page_check = 'Expenditure report categorized by type of.php';
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -276,7 +276,6 @@ $current_page_check = 'Expenditure report categorized by type of.php';
         <div class="content-card">
             
             <h2 class="page-title">รายงานการใช้จ่าย จำแนกตามประเภทรายการจ่าย</h2>
-            <div class="page-subtitle"><?php echo thai_date_full(time()); ?></div>
 
             <div class="d-flex justify-content-end mb-3">
                 <div class="input-group input-group-sm" style="width: auto;">

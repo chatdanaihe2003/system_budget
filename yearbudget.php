@@ -40,6 +40,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // Logic พิเศษ: ถ้ามีการตั้งเป็นปีปัจจุบัน (is_active = 1) ให้เคลียร์ปีอื่นๆ เป็น 0 ก่อน
     if ($is_active == 1) {
         $conn->query("UPDATE fiscal_years SET is_active = 0");
+        
+        // [เพิ่มส่วนนี้] อัปเดต Session ให้เป็นปีปัจจุบันทันที เพื่อให้หน้าอื่นรับรู้
+        $_SESSION['active_budget_year'] = $budget_year; 
     }
 
     if (isset($_POST['action']) && $_POST['action'] == 'add') {

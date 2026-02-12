@@ -20,16 +20,25 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+// --- [ส่วนที่เพิ่มใหม่] ดึงปีงบประมาณที่ทำงานอยู่ (Active Year) ---
+$active_year = date("Y") + 543; // ค่าเริ่มต้น
+$sql_check_active = "SELECT budget_year FROM fiscal_years WHERE is_active = 1 LIMIT 1";
+$result_check_active = $conn->query($sql_check_active);
+
+if ($result_check_active->num_rows > 0) {
+    $row_active = $result_check_active->fetch_assoc();
+    $active_year = $row_active['budget_year'];
+}
+// -------------------------------------------------------------
+
 // --- Logic จัดการข้อมูล (CRUD) ---
 
 // 1. ลบข้อมูล
 if (isset($_GET['delete_id'])) {
     $id = $_GET['delete_id'];
-    // แก้ไขชื่อตารางให้ถูกต้อง
     $sql = "DELETE FROM national_revenue_status_changes WHERE id = ?";
     $stmt = $conn->prepare($sql);
     
-    // เช็ค Error หาก Database หาตารางไม่เจอ
     if ($stmt === false) {
         die("Error preparing statement (DELETE): " . $conn->error . "<br>กรุณาตรวจสอบว่ามีตาราง national_revenue_status_changes ในฐานข้อมูลแล้วหรือไม่");
     }
@@ -50,15 +59,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $amount = $_POST['amount'];
 
     if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        $sql = "INSERT INTO national_revenue_status_changes (change_order, doc_date, doc_no, description, change_type, amount) VALUES (?, ?, ?, ?, ?, ?)";
+        // [แก้ไข] เพิ่ม budget_year ลงในคำสั่ง INSERT
+        $sql = "INSERT INTO national_revenue_status_changes (budget_year, change_order, doc_date, doc_no, description, change_type, amount) VALUES (?, ?, ?, ?, ?, ?, ?)";
         $stmt = $conn->prepare($sql);
         
-        // เช็ค Error
         if ($stmt === false) {
             die("Error preparing statement (INSERT): " . $conn->error . "<br>กรุณาตรวจสอบว่ามีตาราง national_revenue_status_changes ในฐานข้อมูลแล้วหรือไม่");
         }
 
-        $stmt->bind_param("issssd", $change_order, $doc_date, $doc_no, $description, $change_type, $amount);
+        $stmt->bind_param("iissssd", $active_year, $change_order, $doc_date, $doc_no, $description, $change_type, $amount);
         $stmt->execute();
 
     } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
@@ -66,7 +75,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $sql = "UPDATE national_revenue_status_changes SET change_order=?, doc_date=?, doc_no=?, description=?, change_type=?, amount=? WHERE id=?";
         $stmt = $conn->prepare($sql);
 
-        // เช็ค Error
         if ($stmt === false) {
             die("Error preparing statement (UPDATE): " . $conn->error);
         }
@@ -78,11 +86,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- ดึงข้อมูล ---
-$sql_data = "SELECT * FROM national_revenue_status_changes ORDER BY change_order ASC";
-$result_data = $conn->query($sql_data);
+// --- [แก้ไข] ดึงข้อมูลเฉพาะปี Active ---
+$sql_data = "SELECT * FROM national_revenue_status_changes WHERE budget_year = ? ORDER BY change_order ASC";
+$stmt_data = $conn->prepare($sql_data);
+$stmt_data->bind_param("i", $active_year);
+$stmt_data->execute();
+$result_data = $stmt_data->get_result();
 
-// เช็คว่า Query ผ่านไหม
 if ($result_data === false) {
     die("Error fetching data: " . $conn->error . "<br>กรุณาตรวจสอบว่ามีตาราง national_revenue_status_changes ในฐานข้อมูลแล้วหรือไม่");
 }
@@ -226,7 +236,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -238,7 +248,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </div>
             <small class="text-white-50"><?php echo thai_date_full(time()); ?></small>
         </div>
-    </div>
+        </div>
 
     <div class="sub-header">เงินรายได้แผ่นดิน</div>
 
@@ -298,7 +308,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </div>
 
              <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle active" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
+                <a href="#" class="nav-link-custom active dropdown-toggle" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Off_budget_funds.php">เงินนอกงบประมาณ</a></li>
@@ -345,7 +355,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">ทะเบียนการเปลี่ยนแปลงสถานะเงินรายได้แผ่นดิน ปีงบประมาณ 2568</h2>
+            <h2 class="page-title">ทะเบียนการเปลี่ยนแปลงสถานะเงินรายได้แผ่นดิน ปีงบประมาณ <?php echo $active_year; ?></h2>
 
             <div class="d-flex align-items-center mb-2">
                 <button class="btn btn-add" onclick="openAddModal()">
@@ -400,7 +410,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                             }
 
                         } else {
-                            echo "<tr><td colspan='9' class='text-center py-4 text-muted'>ยังไม่มีข้อมูล</td></tr>";
+                            echo "<tr><td colspan='9' class='text-center py-4 text-muted'>ยังไม่มีข้อมูลในปี $active_year</td></tr>";
                         }
                         ?>
                     </tbody>
@@ -414,7 +424,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header d-block">
-                    <h5 class="modal-title-custom" id="modalTitle">บันทึกการเปลี่ยนแปลงสถานะ</h5>
+                    <h5 class="modal-title-custom" id="modalTitle">เพิ่มรายการ ปีงบประมาณ <?php echo $active_year; ?></h5>
                 </div>
                 <div class="modal-body form-yellow-bg mx-3 mb-3">
                     <form action="National_revenue.php" method="POST">
@@ -506,7 +516,8 @@ $current_page = basename($_SERVER['PHP_SELF']);
         function openAddModal() {
             document.getElementById('form_action').value = 'add';
             document.getElementById('edit_id').value = '';
-            document.getElementById('modalTitle').innerHTML = 'เพิ่มรายการ';
+            // [แก้ไข] แสดงปีงบประมาณใน JavaScript Modal Title
+            document.getElementById('modalTitle').innerHTML = 'เพิ่มรายการ ปีงบประมาณ <?php echo $active_year; ?>';
             document.querySelector('#addModal form').reset();
             
             var myModal = new bootstrap.Modal(document.getElementById('addModal'));

@@ -20,6 +20,17 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+// --- [ส่วนที่เพิ่มใหม่] ดึงปีงบประมาณที่ทำงานอยู่ (Active Year) ---
+$active_year = date("Y") + 543; // ค่าเริ่มต้น
+$sql_check_active = "SELECT budget_year FROM fiscal_years WHERE is_active = 1 LIMIT 1";
+$result_check_active = $conn->query($sql_check_active);
+
+if ($result_check_active->num_rows > 0) {
+    $row_active = $result_check_active->fetch_assoc();
+    $active_year = $row_active['budget_year'];
+}
+// -------------------------------------------------------------
+
 // --- Logic จัดการข้อมูล (CRUD) ---
 
 // 1. ลบข้อมูล
@@ -48,10 +59,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     // ตรวจสอบ Action
     if (isset($_POST['action']) && $_POST['action'] == 'add') {
+        // [แก้ไข] เพิ่ม budget_year ลงในคำสั่ง INSERT
         $stmt = $conn->prepare("INSERT INTO project_withdrawals 
-            (withdrawal_order, doc_date, doc_no, withdrawal_type, description, project_id, activity_id, amount, expense_type, requester) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("issisiidss", $withdrawal_order, $doc_date, $doc_no, $withdrawal_type, $description, $project_id, $activity_id, $amount, $expense_type, $requester);
+            (budget_year, withdrawal_order, doc_date, doc_no, withdrawal_type, description, project_id, activity_id, amount, expense_type, requester) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        // เพิ่มตัว i (int) หน้าสุดสำหรับ budget_year
+        $stmt->bind_param("iissisiidss", $active_year, $withdrawal_order, $doc_date, $doc_no, $withdrawal_type, $description, $project_id, $activity_id, $amount, $expense_type, $requester);
         $stmt->execute();
     } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
         $id = $_POST['edit_id'];
@@ -65,9 +78,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- ดึงข้อมูล ---
-$sql_data = "SELECT * FROM project_withdrawals ORDER BY id ASC";
-$result_data = $conn->query($sql_data);
+// --- [แก้ไข] ดึงข้อมูลเฉพาะปี Active ---
+$sql_data = "SELECT * FROM project_withdrawals WHERE budget_year = ? ORDER BY id ASC";
+$stmt_data = $conn->prepare($sql_data);
+$stmt_data->bind_param("i", $active_year);
+$stmt_data->execute();
+$result_data = $stmt_data->get_result();
 
 // จำลองข้อมูล Dropdown โครงการ (ถ้ามีตาราง projects ให้แก้ตรงนี้)
 $projects_opt = [
@@ -177,7 +193,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         <div class="user-info">
             <div>ผู้ใช้ : <?php echo htmlspecialchars($_SESSION['fullname']); ?> (<span class="user-role">**<?php echo $_SESSION['role']; ?>**</span>) <a href="Logout.php" class="btn-logout" onclick="return confirm('ยืนยันออกจากระบบ?');"><i class="fa-solid fa-power-off"></i> ออก</a></div>
             <small class="text-white-50"><?php echo thai_date_full(time()); ?></small>
@@ -194,7 +210,15 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
-                    </ul>
+                    <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="plan.php">แผนงาน</a></li>
+                    <li><a class="dropdown-item" href="Projectoutcomes.php">ผลผลิตโครงการ</a></li>
+                    <li><a class="dropdown-item" href="Activity.php">กิจกรรมหลัก</a></li>
+                    <li><a class="dropdown-item" href="Sourcemoney.php">แหล่งของเงิน</a></li>
+                    <li><a class="dropdown-item" href="Expensesbudget.php">งบรายจ่าย</a></li>
+                    <li><a class="dropdown-item" href="Mainmoney.php">ประเภท(หลัก)ของเงิน</a></li>
+                    <li><a class="dropdown-item" href="Subtypesmoney.php">ประเภท(ย่อย)ของเงิน</a></li>
+                </ul>
             </div>
             
             <div class="dropdown">
@@ -235,19 +259,39 @@ $current_page = basename($_SERVER['PHP_SELF']);
              <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
                 <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="#">เงินงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
             <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตรวจสอบ</a>
                 <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="#">ตรวจสอบการจัดสรร</a></li>
+                    <li><a class="dropdown-item" href="Check budget allocation.php">ตรวจสอบการจัดสรรงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="Check the periodic financial report.php">รายงานเงินประจำงวด</a></li>
+                    <li><a class="dropdown-item" href="Check main payment type.php">จ่ายเงินประเภทหลัก</a></li>
+                    <li><a class="dropdown-item" href="Check the government advance payment.php">จ่ายเงินทดรองราชการ</a></li>
+                    <li><a class="dropdown-item" href="The appeal number does not exist in the system.php">เลขที่ฎีกาที่ไม่มีในระบบ</a></li>
+                    <li><a class="dropdown-item" href="Appeals regarding project termination classified by invoice.php">ฎีกากับการตัดโครงการจำแนกตามใบงวด</a></li>
+                    <li><a class="dropdown-item" href="Supreme Court Rulings and References for Reimbursement Requests Classified by Ruling.php">ฎีกากับการอ้างอิงการขอเบิกจำแนกตามฎีกา</a></li>
+                    <li><a class="dropdown-item" href="Withdrawal requests that have not yet been submitted for approval.php">รายการขอเบิกฯที่ยังไม่ได้วางฎีกา</a></li>
+                    <li><a class="dropdown-item" href="Requisition items with incorrect installment vouchers.php">รายการขอเบิกฯที่วางฎีกาผิดใบงวด</a></li>
                 </ul>
             </div>
             <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">รายงาน</a>
                 <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="#">รายงานการจัดสรร</a></li>
+                    <li><a class="dropdown-item" href="Budget allocation report.php">รายงานการจัดสรรงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="Expenditure report categorized by project.php">รายงานการใช้จ่ายจำแนกตามโครงการ</a></li>
+                    <li><a class="dropdown-item" href="Annuity register.php">ทะเบียนเงินงวด</a></li>
+                    <li><a class="dropdown-item" href="Expenditure report categorized by budget code.php">รายงานการใช้จ่ายจำแนกตามรหัสงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="Expenditure report categorized by type of.php">รายงานการใช้จ่ายจำแนกตามประเภทรายการจ่าย</a></li>
+                    <li><a class="dropdown-item" href="Daily cash balance report.php">รายงานเงินคงเหลือประจำวัน</a></li>
+                    <li><a class="dropdown-item" href="cash book.php">สมุดเงินสด</a></li>
+                    <li><a class="dropdown-item" href="budget report.php">รายงานเงินงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="Report money outside the budget.php">รายงานเงินนอกงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="State income report.php">รายงานเงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="Loan Report.php">รายงานลูกหนี้เงินยืม</a></li>
                 </ul>
             </div>
 
@@ -258,7 +302,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">ทะเบียนขอเบิก/ขอยืมเงินโครงการ ปีงบประมาณ 2568</h2>
+            <h2 class="page-title">ทะเบียนขอเบิก/ขอยืมเงินโครงการ ปีงบประมาณ <?php echo $active_year; ?></h2>
 
             <div class="d-flex justify-content-end mb-3">
                 <button class="btn btn-add" onclick="openAddModal()">
@@ -322,7 +366,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                             echo "</tr>";
 
                         } else {
-                            echo "<tr><td colspan='7' class='text-center py-4 text-muted'>ยังไม่มีข้อมูล</td></tr>";
+                            echo "<tr><td colspan='7' class='text-center py-4 text-muted'>ยังไม่มีข้อมูลในปี $active_year</td></tr>";
                         }
                         ?>
                     </tbody>

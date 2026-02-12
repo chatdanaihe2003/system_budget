@@ -1,13 +1,19 @@
 <?php
-session_start(); // 1. เริ่มต้น Session
+// --- ส่วนแสดง Error (เปิดไว้ชั่วคราวเพื่อแก้ปัญหาจอขาว) ---
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+// -----------------------------------------------------
 
-// 2. ตรวจสอบว่าได้ Login หรือยัง ถ้ายังให้เด้งไปหน้า Login
+session_start(); 
+
+// 1. ตรวจสอบ Login
 if (!isset($_SESSION['user_id'])) {
     header("Location: Login.php");
     exit();
 }
 
-// --- เชื่อมต่อฐานข้อมูล ---
+// 2. เชื่อมต่อฐานข้อมูล
 $servername = "localhost";
 $username = "root";
 $password = "";
@@ -20,24 +26,52 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
-// --- ดึงข้อมูล ---
-$sql_data = "SELECT * FROM missing_appeals ORDER BY item_order ASC";
-$result_data = $conn->query($sql_data);
+// 3. ดึงปีงบประมาณ Active (ใส่ Try-Catch ป้องกันจอขาว)
+$active_year = date("Y") + 543; 
+$sql_check_active = "SELECT budget_year FROM fiscal_years WHERE is_active = 1 LIMIT 1";
 
-// ฟังก์ชันวันที่ไทย
-function thai_date_full($timestamp) {
-    $thai_day_arr = array("อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์");
-    $thai_month_arr = array("0"=>"","1"=>"มกราคม","2"=>"กุมภาพันธ์","3"=>"มีนาคม","4"=>"เมษายน","5"=>"พฤษภาคม","6"=>"มิถุนายน","7"=>"กรกฎาคม","8"=>"สิงหาคม","9"=>"กันยายน","10"=>"ตุลาคม","11"=>"พฤศจิกายน","12"=>"ธันวาคม");
-    $d = date("j", $timestamp);
-    $m = date("n", $timestamp);
-    $y = date("Y", $timestamp) + 543;
-    return "วัน" . $thai_day_arr[date("w", $timestamp)] . "ที่ $d $thai_month_arr[$m] พ.ศ. $y";
+// ใช้ @ เพื่อปิด error ชั่วคราวถ้า query พัง แล้วเช็คค่าเอาเอง
+$result_check_active = $conn->query($sql_check_active);
+
+if ($result_check_active && $result_check_active->num_rows > 0) {
+    $row_active = $result_check_active->fetch_assoc();
+    $active_year = $row_active['budget_year'];
 }
 
-// *** เช็คหน้าปัจจุบัน ***
+// 4. ข้อมูลกลุ่มงาน (Mock Data - หากมีตารางจริงให้เปลี่ยนเป็น SQL Query)
+$work_groups = [
+    1 => "กลุ่มอำนวยการ",
+    2 => "กลุ่มนโยบายและแผน",
+    3 => "กลุ่มส่งเสริมการจัดการศึกษา",
+    4 => "กลุ่มบริหารงานบุคคล",
+    5 => "กลุ่มบริหารการเงินและสินทรัพย์",
+    6 => "กลุ่มหน่วยตรวจสอบภายใน",
+    7 => "กลุ่มนิเทศติดตามและประเมินผลฯ",
+    8 => "กลุ่มส่งเสริมการศึกษาทางไกลเทคโนโลยีสารสนเทศ",
+    9 => "กลุ่มพัฒนาครูและบุคลากรฯ",
+    10 => "กลุ่มกฎหมายและคดี"
+];
+
+// ตัวแปรเก็บยอดรวม
+$total_projects = 0;
+$total_approved = 0;
+$total_disbursed = 0;
+$total_remaining = 0;
+$total_pending = 0;
+
+// ฟังก์ชันวันที่ (ครอบด้วย function_exists ป้องกัน Error ชื่อซ้ำ)
+if (!function_exists('thai_date_full_header')) {
+    function thai_date_full_header($timestamp) {
+        $thai_day_arr = array("อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์");
+        $thai_month_arr = array("0"=>"","1"=>"มกราคม","2"=>"กุมภาพันธ์","3"=>"มีนาคม","4"=>"เมษายน","5"=>"พฤษภาคม","6"=>"มิถุนายน","7"=>"กรกฎาคม","8"=>"สิงหาคม","9"=>"กันยายน","10"=>"ตุลาคม","11"=>"พฤศจิกายน","12"=>"ธันวาคม");
+        $d = date("j", $timestamp);
+        $m = date("n", $timestamp);
+        $y = date("Y", $timestamp) + 543;
+        return "วัน" . $thai_day_arr[date("w", $timestamp)] . "ที่ $d $thai_month_arr[$m] พ.ศ. $y";
+    }
+}
+
 $current_page = basename($_SERVER['PHP_SELF']);
-// หมายเหตุ: ชื่อไฟล์มีเว้นวรรค ให้ใช้ชื่อเต็มๆ
-$current_page_check = 'The appeal number does not exist in the system.php';
 ?>
 
 <!DOCTYPE html>
@@ -45,7 +79,7 @@ $current_page_check = 'The appeal number does not exist in the system.php';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ฎีกาที่ไม่มีในระบบ - AMSS++</title>
+    <title>สรุปภาพรวมกลุ่มงาน - AMSS++</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -59,122 +93,62 @@ $current_page_check = 'The appeal number does not exist in the system.php';
             --accent-gold: #c59d0a;
             --bg-light: #f4f7f6;
             --menu-bg: #212529;
-            --header-gold: #8B8000; /* สีทองเข้ม */
+            --header-gold: #8B8000;
         }
-        body {
-            font-family: 'Sarabun', sans-serif;
-            background-color: var(--bg-light);
-            color: #333;
-        }
+        body { font-family: 'Sarabun', sans-serif; background-color: var(--bg-light); color: #333; }
         
         .top-header { background-color: var(--primary-dark); color: white; padding: 10px 20px; }
-        
-        /* User Info & Logout Button Styles */
         .user-info { font-size: 0.9rem; text-align: right; }
         .user-role { color: var(--accent-yellow); font-weight: 700; text-transform: uppercase; }
-        .btn-logout {
-            color: #ff6b6b;
-            text-decoration: none;
-            margin-left: 10px;
-            font-size: 0.85rem;
-            border: 1px solid #ff6b6b;
-            padding: 2px 8px;
-            border-radius: 4px;
-            transition: all 0.2s;
-        }
-        .btn-logout:hover { background-color: #ff6b6b; color: white; }
-
+        .btn-logout { color: #ff6b6b; text-decoration: none; margin-left: 10px; border: 1px solid #ff6b6b; padding: 2px 8px; border-radius: 4px; }
+        
         .sub-header { background: linear-gradient(90deg, var(--accent-yellow) 0%, var(--accent-gold) 100%); padding: 8px 20px; font-weight: 700; color: var(--primary-dark); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         .navbar-custom { background-color: var(--menu-bg); padding: 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         
-        /* Active Menu Logic */
-        .nav-link-custom { color: #aaa; padding: 12px 20px; text-decoration: none; display: inline-block; transition: all 0.3s; border-bottom: 3px solid transparent; font-size: 0.95rem; }
-        .nav-link-custom:hover, .nav-link-custom.active { 
-            color: #fff; 
-            background-color: #333; 
-            border-bottom-color: var(--accent-yellow); 
-        }
+        .nav-link-custom { color: #aaa; padding: 12px 20px; text-decoration: none; display: inline-block; }
+        .nav-link-custom:hover, .nav-link-custom.active { color: #fff; background-color: #333; border-bottom-color: var(--accent-yellow); }
         
         .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
-        .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
-        
-        /* Dropdown item active color fix (Bold & Black) */
-        .dropdown-item.active, .dropdown-item:active {
-            background-color: white; 
-            color: black !important; /* บังคับตัวหนังสือสีดำ */
-            font-weight: bold !important; /* บังคับตัวหนา */
-        }
+        .dropdown-item.active, .dropdown-item:active { background-color: white; color: black !important; font-weight: bold !important; }
 
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
-        
-        .page-title { color: #008080; font-weight: 700; text-align: center; margin-bottom: 25px; font-size: 1.4rem; } 
-        
-        /* --- Table Styles (Dark Gold / White) --- */
-        .table-custom th { 
-            background-color: var(--header-gold); 
-            color: white; 
-            font-weight: 500; 
-            text-align: center; 
-            vertical-align: middle; 
-            border: 1px solid rgba(255,255,255,0.2); 
-            font-size: 0.85rem; 
-            padding: 8px 4px;
-        }
-        .table-custom td { 
-            vertical-align: middle; 
-            border-bottom: 1px solid #f0f0f0; 
-            padding: 6px 4px; 
-            font-size: 0.85rem; 
-            background-color: white !important;
-        }
-        
-        /* Cancel Striped */
-        .table-striped > tbody > tr:nth-of-type(odd) > * { --bs-table-accent-bg: transparent; }
-        .table-striped > tbody > tr:nth-of-type(even) > * { --bs-table-accent-bg: transparent; }
-        
-        .td-center { text-align: center; }
-        .td-right { text-align: right; }
-        .td-left { text-align: left; }
+        .page-title { color: #008080; font-weight: 700; text-align: center; font-size: 1.4rem; } 
+        .page-subtitle { text-align: center; color: #666; font-size: 0.95rem; margin-bottom: 25px; }
 
-        .btn-add { background-color: #efefef; color: #333; border: 1px solid #ccc; padding: 4px 15px; font-weight: 600; box-shadow: 0 2px 2px rgba(0,0,0,0.1); transition: 0.2s; text-decoration: none; display: inline-block; border-radius: 4px; border: none; cursor: pointer; font-size: 0.9rem; }
-        .btn-add:hover { background-color: #e0e0e0; color: #000; }
-        
-        .action-btn { border: none; background: none; cursor: pointer; transition: 0.2s; font-size: 1rem; padding: 0; }
-        .btn-detail { color: #6c757d; font-size: 1.1rem; } 
-        .action-btn:hover { transform: scale(1.2); }
+        /* Table */
+        .table-custom th { background-color: var(--header-gold); color: white; text-align: center; vertical-align: middle; border: 1px solid rgba(255,255,255,0.2); font-size: 0.9rem; padding: 10px; }
+        .table-custom td { vertical-align: middle; border-bottom: 1px solid #f0f0f0; padding: 8px; font-size: 0.9rem; background-color: white !important; }
+        .total-row td { background-color: #f8f9fa !important; font-weight: bold; border-top: 2px solid #ccc; text-align: right; }
 
-        /* Modal Styles */
-        .form-yellow-bg { background-color: #fff9c4; padding: 20px; border-radius: 5px; border: 1px solid #eee; }
-        .form-label-custom { font-weight: bold; text-align: right; font-size: 0.9rem; }
-        .modal-header { background-color: transparent; border-bottom: none; }
-        .modal-title-custom { color: #008080; font-weight: bold; width: 100%; text-align: center; font-size: 1.3rem;}
+        .text-approved { color: #198754; font-weight: 600; } 
+        .text-disbursed { color: #dc3545; font-weight: 600; } 
+        .text-remaining { color: #0d6efd; font-weight: 600; } 
+        .text-pending { color: #fd7e14; font-weight: 600; }   
+
+        .btn-view { background-color: #0d6efd; color: white; border: none; padding: 2px 10px; border-radius: 4px; font-size: 0.8rem; }
     </style>
 </head>
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
-        
+        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         <div class="user-info">
             <div>
                 ผู้ใช้ : <?php echo htmlspecialchars($_SESSION['fullname']); ?> 
                 (<span class="user-role">**<?php echo $_SESSION['role']; ?>**</span>)
-                <a href="Logout.php" class="btn-logout" onclick="return confirm('ยืนยันออกจากระบบ?');">
-                    <i class="fa-solid fa-power-off"></i> ออก
-                </a>
+                <a href="Logout.php" class="btn-logout" onclick="return confirm('ยืนยันออกจากระบบ?');"><i class="fa-solid fa-power-off"></i> ออก</a>
             </div>
-            <small class="text-white-50"><?php echo thai_date_full(time()); ?></small>
+            <small class="text-white-50"><?php echo thai_date_full_header(time()); ?></small>
         </div>
-        </div>
+    </div>
 
-    <div class="sub-header">ฎีกาที่ไม่มีในระบบ</div>
+    <div class="sub-header">สรุปภาพรวมกลุ่มงาน</div>
 
     <div class="navbar-custom">
         <div class="container-fluid d-flex flex-wrap">
-            <a href="index.php" class="nav-link-custom">รายการหลัก</a>
-            
+            <a href="index.php" class="nav-link-custom active">รายการหลัก</a>
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['officers.php', 'yearbudget.php', 'plan.php', 'Projectoutcomes.php', 'Activity.php', 'Sourcemoney.php', 'Expensesbudget.php', 'Mainmoney.php', 'Subtypesmoney.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
                     <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
@@ -187,9 +161,8 @@ $current_page_check = 'The appeal number does not exist in the system.php';
                     <li><a class="dropdown-item" href="Subtypesmoney.php">ประเภท(ย่อย)ของเงิน</a></li>
                 </ul>
             </div>
-            
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Budgetallocation.php', 'Receivebudget.php', 'Receiveoffbudget.php', 'Receivenational.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ทะเบียนรับ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนรับ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budgetallocation.php">รับการจัดสรรงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Receivebudget.php">รับเงินงบประมาณ</a></li>
@@ -197,9 +170,8 @@ $current_page_check = 'The appeal number does not exist in the system.php';
                     <li><a class="dropdown-item" href="Receivenational.php">รับเงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
-
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['RequestforWithdrawalProjectLoan.php', 'ProjectRefundRegistration.php', 'TreasuryWithdrawal.php', 'TreasuryRefundRegister.php', 'Withdrawtheappeal.php', 'Fundrolloverregister.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ทะเบียนขอเบิก</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนขอเบิก</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="RequestforWithdrawalProjectLoan.php">ทะเบียนขอเบิก/ขอยืมเงินโครงการ</a></li>
                     <li><a class="dropdown-item" href="ProjectRefundRegistration.php">***ทะเบียนคืนเงินโครงการ</a></li>
@@ -209,9 +181,8 @@ $current_page_check = 'The appeal number does not exist in the system.php';
                     <li><a class="dropdown-item" href="Fundrolloverregister.php">ทะเบียนเงินกันเหลื่อมปี</a></li>
                 </ul>
             </div>
-
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Authorizebudgetexpenditures.php', 'Orderpaymentoutsidethebudget.php', 'Orderpaymentofstaterevenue.php', 'Governmentadvancefunds.php', 'Approvedformaintypepayment.php', 'Approved for governmentadvancepayment.php', 'Major type of payment.php', 'Advance payment for government service.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ทะเบียนจ่าย</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนจ่าย</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Authorizebudgetexpenditures.php">สั่งจ่ายเงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Orderpaymentoutsidethebudget.php">สั่งจ่ายเงินนอกงบประมาณ</a></li>
@@ -223,31 +194,28 @@ $current_page_check = 'The appeal number does not exist in the system.php';
                     <li><a class="dropdown-item" href="Advance payment for government service.php">จ่ายเงินทดรองราชการ</a></li>
                 </ul>
             </div>
-
              <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="National_revenue.php">เงินรายได้แผ่นดิน</a></li>
                 </ul>
             </div>
-            
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle active" data-bs-toggle="dropdown">ตรวจสอบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตรวจสอบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Check budget allocation.php">ตรวจสอบการจัดสรรงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Check the periodic financial report.php">รายงานเงินประจำงวด</a></li>
                     <li><a class="dropdown-item" href="Check main payment type.php">จ่ายเงินประเภทหลัก</a></li>
                     <li><a class="dropdown-item" href="Check the government advance payment.php">จ่ายเงินทดรองราชการ</a></li>
-                    <li><a class="dropdown-item active" href="The appeal number does not exist in the system.php">เลขที่ฎีกาที่ไม่มีในระบบ</a></li>
+                    <li><a class="dropdown-item" href="The appeal number does not exist in the system.php">เลขที่ฎีกาที่ไม่มีในระบบ</a></li>
                     <li><a class="dropdown-item" href="Appeals regarding project termination classified by invoice.php">ฎีกากับการตัดโครงการจำแนกตามใบงวด</a></li>
                     <li><a class="dropdown-item" href="Supreme Court Rulings and References for Reimbursement Requests Classified by Ruling.php">ฎีกากับการอ้างอิงการขอเบิกจำแนกตามฎีกา</a></li>
                     <li><a class="dropdown-item" href="Withdrawal requests that have not yet been submitted for approval.php">รายการขอเบิกฯที่ยังไม่ได้วางฎีกา</a></li>
                     <li><a class="dropdown-item" href="Requisition items with incorrect installment vouchers.php">รายการขอเบิกฯที่วางฎีกาผิดใบงวด</a></li>
                 </ul>
             </div>
-
             <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">รายงาน</a>
                 <ul class="dropdown-menu">
@@ -264,7 +232,6 @@ $current_page_check = 'The appeal number does not exist in the system.php';
                     <li><a class="dropdown-item" href="Loan Report.php">รายงานลูกหนี้เงินยืม</a></li>
                 </ul>
             </div>
-
             <a href="#" class="nav-link-custom ms-auto">คู่มือ</a>
         </div>
     </div>
@@ -272,31 +239,69 @@ $current_page_check = 'The appeal number does not exist in the system.php';
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">ฎีกาที่ไม่มีในระบบ ปีงบประมาณ </h2>
+            <h2 class="page-title"><i class="fa-solid fa-chart-pie"></i> สรุปภาพรวมกลุ่มงาน</h2>
+            <div class="page-subtitle">สรุปข้อมูลโครงการและงบประมาณ (เฉพาะโครงการพัฒนาคุณภาพฯ) ของแต่ละกลุ่มงาน ปีงบประมาณ <?php echo $active_year; ?></div>
 
             <div class="table-responsive">
                 <table class="table table-striped table-custom">
                     <thead>
                         <tr>
-                            <th style="width: 50%;">ที่</th>
-                            <th style="width: 50%;">เลขที่ฎีกา</th>
+                            <th rowspan="2" style="width: 5%;">ลำดับ</th>
+                            <th rowspan="2" style="width: 30%;">กลุ่มงาน</th>
+                            <th rowspan="2" style="width: 10%;">จำนวน<br>โครงการ</th>
+                            <th colspan="4">ข้อมูลการเงิน (บาท)</th>
+                            <th rowspan="2" style="width: 10%;">รายละเอียด</th>
+                        </tr>
+                        <tr>
+                            <th style="width: 11%;">ได้รับอนุมัติ</th>
+                            <th style="width: 11%;">เบิกจ่ายแล้ว</th>
+                            <th style="width: 11%;">คงเหลือ</th>
+                            <th style="width: 11%;">รออนุมัติ<br>(Pending)</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php 
-                        if ($result_data->num_rows > 0) {
-                            while($row = $result_data->fetch_assoc()) {
-                                echo "<tr>";
-                                echo "<td class='td-center'>" . $row['item_order'] . "</td>";
-                                echo "<td class='td-center'>" . $row['appeal_number'] . "</td>";
-                                echo "</tr>";
-                            }
+                        foreach ($work_groups as $index => $group_name) {
+                            $project_count = 0;
+                            // ตัวอย่าง Mock Data (กลุ่มที่ 7 มี 1 โครงการ)
+                            if($index == 7) $project_count = 1; 
 
-                        } else {
-                            echo "<tr><td colspan='2' class='text-center py-4 text-muted'>ไม่พบข้อมูล</td></tr>";
+                            $approved = 0.00;
+                            $disbursed = 0.00;
+                            $remaining = 0.00;
+                            $pending = 0.00;
+
+                            // สะสมยอดรวม
+                            $total_projects += $project_count;
+                            $total_approved += $approved;
+                            $total_disbursed += $disbursed;
+                            $total_remaining += $remaining;
+                            $total_pending += $pending;
+
+                            echo "<tr>";
+                            echo "<td class='text-center'>$index</td>";
+                            echo "<td class='text-start'>$group_name</td>";
+                            echo "<td class='text-center'>$project_count</td>";
+                            echo "<td class='text-end text-approved'>" . number_format($approved, 2) . "</td>";
+                            echo "<td class='text-end text-disbursed'>" . number_format($disbursed, 2) . "</td>";
+                            echo "<td class='text-end text-remaining'>" . number_format($remaining, 2) . "</td>";
+                            echo "<td class='text-end text-pending'>" . number_format($pending, 2) . "</td>";
+                            echo "<td class='text-center'><button class='btn-view'><i class='fa-solid fa-eye'></i> ดู</button></td>";
+                            echo "</tr>";
                         }
                         ?>
                     </tbody>
+                    <tfoot>
+                        <tr class="total-row">
+                            <td colspan="2" class="text-center">รวมทั้งสิ้น:</td>
+                            <td class="text-center"><?php echo $total_projects; ?></td>
+                            <td class="text-end"><?php echo number_format($total_approved, 2); ?></td>
+                            <td class="text-end"><?php echo number_format($total_disbursed, 2); ?></td>
+                            <td class="text-end"><?php echo number_format($total_remaining, 2); ?></td>
+                            <td class="text-end"><?php echo number_format($total_pending, 2); ?></td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
 

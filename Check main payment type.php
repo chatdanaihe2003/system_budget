@@ -172,7 +172,7 @@ $current_page_encoded = urlencode('Check main payment type.php');
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -291,7 +291,7 @@ $current_page_encoded = urlencode('Check main payment type.php');
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">ตรวจสอบการจ่ายเงินประเภทหลัก - AMSS++</h2>
+            <h2 class="page-title">จ่ายเงินปีงบประมาณ</h2>
             <div class="page-pagination">หน้า [1]</div>
 
             <div class="table-responsive">

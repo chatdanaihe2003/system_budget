@@ -20,14 +20,50 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+// --- [ส่วนที่เพิ่มใหม่] ดึงปีงบประมาณที่ทำงานอยู่ (Active Year) ---
+$active_year = date("Y") + 543; // ค่าเริ่มต้น
+$sql_check_active = "SELECT budget_year FROM fiscal_years WHERE is_active = 1 LIMIT 1";
+$result_check_active = $conn->query($sql_check_active);
+
+if ($result_check_active->num_rows > 0) {
+    $row_active = $result_check_active->fetch_assoc();
+    $active_year = $row_active['budget_year'];
+}
+// -------------------------------------------------------------
+
 // --- Logic จัดการข้อมูล (CRUD) ---
 
 // 1. ลบข้อมูล
 if (isset($_GET['delete_id'])) {
     $id = $_GET['delete_id'];
-    $stmt = $conn->prepare("DELETE FROM government_advance_funds WHERE id = ?");
-    $stmt->bind_param("i", $id);
-    $stmt->execute();
+
+    // [Step 1] ดึงข้อมูลเดิมก่อนลบ เพื่อนำไปลบในตารางปลายทาง
+    $stmt_get = $conn->prepare("SELECT advance_order, budget_year FROM government_advance_funds WHERE id = ?");
+    $stmt_get->bind_param("i", $id);
+    $stmt_get->execute();
+    $result_get = $stmt_get->get_result();
+
+    if ($result_get->num_rows > 0) {
+        $row_del = $result_get->fetch_assoc();
+        $del_order = $row_del['advance_order'];
+        $del_year = $row_del['budget_year'];
+
+        // [Step 2] ลบข้อมูลจากตารางหลัก
+        $stmt = $conn->prepare("DELETE FROM government_advance_funds WHERE id = ?");
+        $stmt->bind_param("i", $id);
+        
+        if ($stmt->execute()) {
+            // [Step 3] ลบข้อมูลที่เชื่อมโยงในตาราง approved_gov_advance_payments
+            // **จุดสำคัญ** ต้องมีตาราง approved_gov_advance_payments ในฐานข้อมูล
+            $stmt_link_del = $conn->prepare("DELETE FROM approved_gov_advance_payments WHERE advance_order = ? AND budget_year = ?");
+            if ($stmt_link_del === false) {
+                die("Error Prepare Delete Link: " . $conn->error . " (ตรวจสอบว่ามีตาราง approved_gov_advance_payments หรือไม่)");
+            }
+            $stmt_link_del->bind_param("ii", $del_order, $del_year);
+            $stmt_link_del->execute();
+        }
+    }
+
     header("Location: Governmentadvancefunds.php");
     exit();
 }
@@ -43,22 +79,68 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $return_amount = $_POST['return_amount'];
 
     if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        $stmt = $conn->prepare("INSERT INTO government_advance_funds (advance_order, doc_date, doc_no, ref_doc_no, description, loan_amount, return_amount) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("issssdd", $advance_order, $doc_date, $doc_no, $ref_doc_no, $description, $loan_amount, $return_amount);
-        $stmt->execute();
+        // [ส่วนที่ 1] บันทึกลงตารางหลัก (government_advance_funds)
+        $stmt = $conn->prepare("INSERT INTO government_advance_funds (budget_year, advance_order, doc_date, doc_no, ref_doc_no, description, loan_amount, return_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("iissssdd", $active_year, $advance_order, $doc_date, $doc_no, $ref_doc_no, $description, $loan_amount, $return_amount);
+        
+        if (!$stmt->execute()) {
+            die("Error Insert Main: " . $stmt->error);
+        }
+
+        // [ส่วนที่ 2] ส่งข้อมูลไปที่หน้า Approved for governmentadvancepayment.php
+        $approval_status_init = 'pending';
+        $payment_status_init = 'unpaid';
+
+        // **จุดสำคัญ** เช็ค Error ตรงนี้
+        $sql_link = "INSERT INTO approved_gov_advance_payments (budget_year, advance_order, doc_date, doc_no, ref_doc_no, description, loan_amount, return_amount, approval_status, payment_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        $stmt_link = $conn->prepare($sql_link);
+        
+        if ($stmt_link === false) {
+            die("<h3>เกิดข้อผิดพลาด! (ตารางปลายทาง)</h3><br>สาเหตุ: " . $conn->error . "<br><br>กรุณาตรวจสอบว่าคุณได้สร้างตาราง <b>approved_gov_advance_payments</b> ในฐานข้อมูลแล้วหรือยัง?");
+        }
+
+        $stmt_link->bind_param("iissssddss", $active_year, $advance_order, $doc_date, $doc_no, $ref_doc_no, $description, $loan_amount, $return_amount, $approval_status_init, $payment_status_init);
+        
+        if (!$stmt_link->execute()) {
+            die("Error Execute Link: " . $stmt_link->error);
+        }
+
     } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
         $id = $_POST['edit_id'];
+
+        // ดึงข้อมูลเดิมก่อนแก้ไข เพื่อหาตัวเชื่อม
+        $stmt_old = $conn->prepare("SELECT advance_order, budget_year FROM government_advance_funds WHERE id = ?");
+        $stmt_old->bind_param("i", $id);
+        $stmt_old->execute();
+        $res_old = $stmt_old->get_result();
+        $old_data = $res_old->fetch_assoc();
+        $old_order = $old_data['advance_order'];
+        $current_budget_year = $old_data['budget_year'];
+
+        // อัปเดตตารางหลัก
         $stmt = $conn->prepare("UPDATE government_advance_funds SET advance_order=?, doc_date=?, doc_no=?, ref_doc_no=?, description=?, loan_amount=?, return_amount=? WHERE id=?");
         $stmt->bind_param("issssddi", $advance_order, $doc_date, $doc_no, $ref_doc_no, $description, $loan_amount, $return_amount, $id);
-        $stmt->execute();
+        
+        if ($stmt->execute()) {
+            // อัปเดตข้อมูลในตารางปลายทาง
+            $stmt_update_link = $conn->prepare("UPDATE approved_gov_advance_payments SET advance_order=?, doc_date=?, doc_no=?, ref_doc_no=?, description=?, loan_amount=?, return_amount=? WHERE advance_order=? AND budget_year=?");
+            if ($stmt_update_link === false) {
+                 die("Error Prepare Update Link: " . $conn->error);
+            }
+            $stmt_update_link->bind_param("issssddii", $advance_order, $doc_date, $doc_no, $ref_doc_no, $description, $loan_amount, $return_amount, $old_order, $current_budget_year);
+            $stmt_update_link->execute();
+        }
     }
     header("Location: Governmentadvancefunds.php");
     exit();
 }
 
-// --- ดึงข้อมูล ---
-$sql_data = "SELECT * FROM government_advance_funds ORDER BY advance_order ASC";
-$result_data = $conn->query($sql_data);
+// --- [แก้ไข] ดึงข้อมูลเฉพาะปี Active ---
+$sql_data = "SELECT * FROM government_advance_funds WHERE budget_year = ? ORDER BY advance_order ASC";
+$stmt_data = $conn->prepare($sql_data);
+$stmt_data->bind_param("i", $active_year);
+$stmt_data->execute();
+$result_data = $stmt_data->get_result();
 
 $total_loan = 0;
 $total_return = 0;
@@ -71,7 +153,7 @@ function thai_date_short($date_str) {
     $d = str_pad(date("j", $timestamp), 2, '0', STR_PAD_LEFT); 
     $m = date("n", $timestamp);
     $y = date("Y", $timestamp) + 543; 
-    return "$d{$thai_month_arr[$m]}$y"; 
+    return "$d {$thai_month_arr[$m]} $y"; 
 }
 
 function thai_date_full($timestamp) {
@@ -154,6 +236,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
         
+        /* Title Color */
         .page-title { color: #008080; font-weight: 700; text-align: center; margin-bottom: 25px; font-size: 1.4rem; } 
         
         /* --- Table Styles (Dark Gold / White) --- */
@@ -213,7 +296,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -234,7 +317,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             <a href="index.php" class="nav-link-custom">รายการหลัก</a>
             
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['officers.php', 'yearbudget.php', 'plan.php', 'Projectoutcomes.php', 'Activity.php', 'Sourcemoney.php', 'Expensesbudget.php', 'Mainmoney.php', 'Subtypesmoney.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
                     <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
@@ -249,7 +332,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </div>
             
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Budgetallocation.php', 'Receivebudget.php', 'Receiveoffbudget.php', 'Receivenational.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ทะเบียนรับ</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนรับ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budgetallocation.php">รับการจัดสรรงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Receivebudget.php">รับเงินงบประมาณ</a></li>
@@ -259,7 +342,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             </div>
 
             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['RequestforWithdrawalProjectLoan.php', 'ProjectRefundRegistration.php', 'TreasuryWithdrawal.php', 'TreasuryRefundRegister.php', 'Withdrawtheappeal.php', 'Fundrolloverregister.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ทะเบียนขอเบิก</a>
+                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนขอเบิก</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="RequestforWithdrawalProjectLoan.php">ทะเบียนขอเบิก/ขอยืมเงินโครงการ</a></li>
                     <li><a class="dropdown-item" href="ProjectRefundRegistration.php">***ทะเบียนคืนเงินโครงการ</a></li>
@@ -332,7 +415,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">ทะเบียนเงินทดรองราชการ ปีงบประมาณ 2568</h2>
+            <h2 class="page-title">ทะเบียนเงินทดรองราชการ ปีงบประมาณ <?php echo $active_year; ?></h2>
 
             <div class="d-flex justify-content-between align-items-center mb-2">
                 <button class="btn btn-add" onclick="openAddModal()">
@@ -375,7 +458,6 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                 if ($row['return_amount'] > 0) {
                                     echo number_format($row['return_amount'], 2);
                                 } else {
-                                    // ไอคอนแว่นขยายถ้ายังไม่มีการคืน (ตามภาพต้นฉบับ) หรือจะใส่ 0.00 ก็ได้
                                     echo '<i class="fa-solid fa-magnifying-glass text-primary"></i>';
                                 }
                                 echo "</td>";
@@ -387,7 +469,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 
                                 // ลบ
                                 echo "<td class='td-center'>";
-                                echo '<a href="?delete_id='.$row['id'].'" class="action-btn btn-delete" onclick="return confirm(\'คุณต้องการลบรายการนี้หรือไม่?\')"><i class="fa-solid fa-xmark"></i></a>';
+                                echo '<a href="?delete_id='.$row['id'].'" class="action-btn btn-delete" onclick="return confirm(\'คุณต้องการลบรายการนี้หรือไม่? ข้อมูลในหน้าอนุมัติจะถูกลบด้วย\')"><i class="fa-solid fa-xmark"></i></a>';
                                 echo "</td>";
 
                                 // แก้ไข
@@ -411,7 +493,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                             echo "</tr>";
 
                         } else {
-                            echo "<tr><td colspan='11' class='text-center py-4 text-muted'>ยังไม่มีข้อมูล</td></tr>";
+                            echo "<tr><td colspan='11' class='text-center py-4 text-muted'>ยังไม่มีข้อมูลในปี $active_year</td></tr>";
                         }
                         ?>
                     </tbody>
@@ -425,7 +507,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header d-block">
-                    <h5 class="modal-title-custom" id="modalTitle">ลงทะเบียน เงินทดรองราชการ</h5>
+                    <h5 class="modal-title-custom" id="modalTitle">ลงทะเบียน เงินทดรองราชการ ปีงบประมาณ <?php echo $active_year; ?></h5>
                 </div>
                 <div class="modal-body form-yellow-bg mx-3 mb-3">
                     <form action="Governmentadvancefunds.php" method="POST">
@@ -525,7 +607,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
         function openAddModal() {
             document.getElementById('form_action').value = 'add';
             document.getElementById('edit_id').value = '';
-            document.getElementById('modalTitle').innerHTML = 'ลงทะเบียน เงินทดรองราชการ';
+            document.getElementById('modalTitle').innerHTML = 'ลงทะเบียน เงินทดรองราชการ ปีงบประมาณ <?php echo $active_year; ?>';
             document.querySelector('form').reset();
             
             var myModal = new bootstrap.Modal(document.getElementById('addModal'));

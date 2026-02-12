@@ -20,6 +20,17 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+// --- [ส่วนที่เพิ่มใหม่] ดึงปีงบประมาณที่ทำงานอยู่ (Active Year) ---
+$active_year = date("Y") + 543; // ค่าเริ่มต้น
+$sql_check_active = "SELECT budget_year FROM fiscal_years WHERE is_active = 1 LIMIT 1";
+$result_check_active = $conn->query($sql_check_active);
+
+if ($result_check_active->num_rows > 0) {
+    $row_active = $result_check_active->fetch_assoc();
+    $active_year = $row_active['budget_year'];
+}
+// -------------------------------------------------------------
+
 // --- สร้างโฟลเดอร์ uploads อัตโนมัติ ---
 if (!file_exists('uploads')) {
     mkdir('uploads', 0777, true);
@@ -69,8 +80,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 
     if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        $stmt = $conn->prepare("INSERT INTO budget_allocations (allocation_order, doc_date, description, amount, file_name) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param("issds", $allocation_order, $doc_date, $description, $amount, $file_name);
+        // [แก้ไข] เพิ่ม budget_year ลงในคำสั่ง INSERT
+        $stmt = $conn->prepare("INSERT INTO budget_allocations (budget_year, allocation_order, doc_date, description, amount, file_name) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("iissds", $active_year, $allocation_order, $doc_date, $description, $amount, $file_name);
         $stmt->execute();
         
     } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
@@ -96,9 +108,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- ดึงข้อมูล ---
-$sql_data = "SELECT * FROM budget_allocations ORDER BY allocation_order ASC";
-$result_data = $conn->query($sql_data);
+// --- [แก้ไข] ดึงข้อมูลเฉพาะปี Active ---
+$sql_data = "SELECT * FROM budget_allocations WHERE budget_year = ? ORDER BY allocation_order ASC";
+$stmt = $conn->prepare($sql_data);
+$stmt->bind_param("i", $active_year);
+$stmt->execute();
+$result_data = $stmt->get_result();
 
 // ฟังก์ชันวันที่ไทยย่อ
 function thai_date_short($date_str) {
@@ -232,7 +247,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -271,7 +286,6 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <a href="#" class="nav-link-custom active dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนรับ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item <?php echo ($current_page == 'Budgetallocation.php') ? 'active' : ''; ?>" href="Budgetallocation.php">รับการจัดสรรงบประมาณ</a></li>
-                    
                     <li><a class="dropdown-item" href="Receivebudget.php">รับเงินงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Receiveoffbudget.php">รับเงินนอกงบประมาณ</a></li>
                     <li><a class="dropdown-item" href="Receivenational.php">รับเงินรายได้แผ่นดิน</a></li>
@@ -354,7 +368,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <div style="width: 100px;"></div> 
-                <h2 class="page-title m-0">ทะเบียนโอนการเปลี่ยนแปลงการจัดสรรงบประมาณ ปีงบประมาณ 2568</h2>
+                <h2 class="page-title m-0">ทะเบียนโอนการเปลี่ยนแปลงการจัดสรรงบประมาณ (ปีงบประมาณ <?php echo $active_year; ?>)</h2>
                 <button class="btn btn-add" data-bs-toggle="modal" data-bs-target="#addModal">
                     <i class="fa-solid fa-plus me-1"></i> เพิ่มรายการ
                 </button>
@@ -425,7 +439,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                 echo "</tr>";
                             }
                         } else {
-                            echo "<tr><td colspan='10' class='text-center py-4 text-muted'>ยังไม่มีข้อมูล</td></tr>";
+                            echo "<tr><td colspan='10' class='text-center py-4 text-muted'>ยังไม่มีข้อมูลรายการในปี " . $active_year . "</td></tr>";
                         }
                         ?>
                     </tbody>

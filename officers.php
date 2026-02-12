@@ -224,7 +224,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -362,14 +362,15 @@ $current_page = basename($_SERVER['PHP_SELF']);
                         </tr>
                         <tr>
                             <th>ผู้อนุมัติ</th>
-                            <th>ทะเบียนคุม</th>
-                            <th>ทะเบียนขอเบิก</th>
-                            <th>ทะเบียนฎีกา</th>
+                            <th>เงินงวด</th>
+                            <th>ขอเบิก</th>
+                            <th>วางฎีกา</th>
                             <th>เงินงบประมาณ</th>
-                            <th>เงินนอกงบฯ</th>
-                            <th>รายได้แผ่นดิน</th>
-                            <th>เงินทดรองฯ</th>
+                            <th>เงินนอกงบประมาณ</th>
+                            <th>เงินรายได้แผ่นดิน</th>
+                            <th>รายทดรองราชการ</th>
                             <th>จ่ายเงิน</th>
+                            
                         </tr>
                     </thead>
                     <tbody>
@@ -384,8 +385,11 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                 $fields = ['p_approve', 'p_register', 'p_withdraw', 'p_tax', 'p_budget', 'p_nonbudget', 'p_income', 'p_royal', 'p_pay'];
                                 foreach ($fields as $field) {
                                     echo "<td>";
+                                    // [แก้ไข] เพิ่มเงื่อนไข else เพื่อแสดงกากบาท
                                     if($row[$field] == 1) {
                                         echo '<i class="fa-solid fa-check check-icon"></i>';
+                                    } else {
+                                        echo '<i class="fa-solid fa-xmark cross-icon"></i>';
                                     }
                                     echo "</td>";
                                 }
@@ -393,9 +397,9 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                 echo '<td>';
                                 echo '<a href="?delete_id='.$row['id'].'" class="action-btn btn-delete" onclick="return confirm(\'คุณต้องการลบข้อมูลนี้หรือไม่?\')" title="ลบ"><i class="fa-solid fa-trash-can"></i></a>';
                                 echo '<button class="action-btn btn-edit" title="แก้ไข" 
-                                            onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
-                                            <i class="fa-solid fa-pen-to-square"></i>
-                                          </button>';
+                                              onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
+                                              <i class="fa-solid fa-pen-to-square"></i>
+                                            </button>';
                                 echo '</td>';
                                 echo "</tr>";
                             }
@@ -426,13 +430,13 @@ $current_page = basename($_SERVER['PHP_SELF']);
                         <div class="mb-2"><strong>กำหนดสิทธิ์การเข้าถึง:</strong></div>
                         <div class="row g-2">
                             <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_approve" id="add_approve"><label class="form-check-label" for="add_approve">ผู้อนุมัติ</label></div></div>
-                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_register" id="add_register"><label class="form-check-label" for="add_register">ทะเบียนคุม</label></div></div>
-                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_withdraw" id="add_withdraw"><label class="form-check-label" for="add_withdraw">ทะเบียนขอเบิก</label></div></div>
-                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_tax" id="add_tax"><label class="form-check-label" for="add_tax">ทะเบียนฎีกา</label></div></div>
+                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_register" id="add_register"><label class="form-check-label" for="add_register">เงินงวด</label></div></div>
+                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_withdraw" id="add_withdraw"><label class="form-check-label" for="add_withdraw">ขอเบิก</label></div></div>
+                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_tax" id="add_tax"><label class="form-check-label" for="add_tax">วางฎีกา</label></div></div>
                             <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_budget" id="add_budget"><label class="form-check-label" for="add_budget">เงินงบประมาณ</label></div></div>
-                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_nonbudget" id="add_nonbudget"><label class="form-check-label" for="add_nonbudget">เงินนอกงบฯ</label></div></div>
+                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_nonbudget" id="add_nonbudget"><label class="form-check-label" for="add_nonbudget">เงินนอกงบประมาณ</label></div></div>
                             <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_income" id="add_income"><label class="form-check-label" for="add_income">รายได้แผ่นดิน</label></div></div>
-                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_royal" id="add_royal"><label class="form-check-label" for="add_royal">เงินทดรองฯ</label></div></div>
+                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_royal" id="add_royal"><label class="form-check-label" for="add_royal">เงินทดรองราชการ</label></div></div>
                             <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_pay" id="add_pay"><label class="form-check-label" for="add_pay">จ่ายเงิน</label></div></div>
                         </div>
                     </div>
@@ -464,13 +468,13 @@ $current_page = basename($_SERVER['PHP_SELF']);
                         <div class="mb-2"><strong>กำหนดสิทธิ์การเข้าถึง:</strong></div>
                         <div class="row g-2">
                             <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_approve" id="edit_p_approve"><label class="form-check-label" for="edit_p_approve">ผู้อนุมัติ</label></div></div>
-                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_register" id="edit_p_register"><label class="form-check-label" for="edit_p_register">ทะเบียนคุม</label></div></div>
-                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_withdraw" id="edit_p_withdraw"><label class="form-check-label" for="edit_p_withdraw">ทะเบียนขอเบิก</label></div></div>
-                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_tax" id="edit_p_tax"><label class="form-check-label" for="edit_p_tax">ทะเบียนฎีกา</label></div></div>
+                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_register" id="edit_p_register"><label class="form-check-label" for="edit_p_register">เงินงวด</label></div></div>
+                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_withdraw" id="edit_p_withdraw"><label class="form-check-label" for="edit_p_withdraw">ขอเบิก</label></div></div>
+                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_tax" id="edit_p_tax"><label class="form-check-label" for="edit_p_tax">วางฎีกา</label></div></div>
                             <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_budget" id="edit_p_budget"><label class="form-check-label" for="edit_p_budget">เงินงบประมาณ</label></div></div>
-                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_nonbudget" id="edit_p_nonbudget"><label class="form-check-label" for="edit_p_nonbudget">เงินนอกงบฯ</label></div></div>
+                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_nonbudget" id="edit_p_nonbudget"><label class="form-check-label" for="edit_p_nonbudget">เงินนอกงบประมาณ</label></div></div>
                             <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_income" id="edit_p_income"><label class="form-check-label" for="edit_p_income">รายได้แผ่นดิน</label></div></div>
-                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_royal" id="edit_p_royal"><label class="form-check-label" for="edit_p_royal">เงินทดรองฯ</label></div></div>
+                            <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_royal" id="edit_p_royal"><label class="form-check-label" for="edit_p_royal">เงินทดรองราชการ</label></div></div>
                             <div class="col-6"><div class="form-check"><input class="form-check-input" type="checkbox" name="p_pay" id="edit_p_pay"><label class="form-check-label" for="edit_p_pay">จ่ายเงิน</label></div></div>
                         </div>
                     </div>

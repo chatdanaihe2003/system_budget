@@ -20,6 +20,17 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+// --- [ส่วนที่เพิ่มใหม่] ดึงปีงบประมาณที่ทำงานอยู่ (Active Year) ---
+$active_year = date("Y") + 543; // ค่าเริ่มต้น
+$sql_check_active = "SELECT budget_year FROM fiscal_years WHERE is_active = 1 LIMIT 1";
+$result_check_active = $conn->query($sql_check_active);
+
+if ($result_check_active->num_rows > 0) {
+    $row_active = $result_check_active->fetch_assoc();
+    $active_year = $row_active['budget_year'];
+}
+// -------------------------------------------------------------
+
 // --- Logic จัดการข้อมูล (CRUD) ---
 
 // 1. ลบข้อมูล
@@ -42,8 +53,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $amount = $_POST['amount'];
 
     if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        $stmt = $conn->prepare("INSERT INTO treasury_refunds (refund_order, doc_date, doc_no, description, amount) VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param("isssd", $refund_order, $doc_date, $doc_no, $description, $amount);
+        // [แก้ไข] เพิ่ม budget_year ลงในคำสั่ง INSERT
+        $stmt = $conn->prepare("INSERT INTO treasury_refunds (budget_year, refund_order, doc_date, doc_no, description, amount) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("iisssd", $active_year, $refund_order, $doc_date, $doc_no, $description, $amount);
         $stmt->execute();
     } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
         $id = $_POST['edit_id'];
@@ -55,10 +67,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- ดึงข้อมูล ---
-// ใช้ตาราง treasury_refunds (ต้องสร้างตารางนี้ใน DB ก่อนนะครับ)
-$sql_data = "SELECT * FROM treasury_refunds ORDER BY refund_order ASC";
-$result_data = $conn->query($sql_data);
+// --- [แก้ไข] ดึงข้อมูลเฉพาะปี Active ---
+$sql_data = "SELECT * FROM treasury_refunds WHERE budget_year = ? ORDER BY refund_order ASC";
+$stmt_data = $conn->prepare($sql_data);
+$stmt_data->bind_param("i", $active_year);
+$stmt_data->execute();
+$result_data = $stmt_data->get_result();
 
 // ตัวแปรยอดรวม
 $total_amount = 0;
@@ -153,6 +167,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 
         .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
         
+        /* Title Color */
         .page-title { color: #d63384; font-weight: 700; text-align: center; margin-bottom: 25px; font-size: 1.4rem; }
         
         /* --- Table Styles (Dark Gold / White) --- */
@@ -201,12 +216,14 @@ $current_page = basename($_SERVER['PHP_SELF']);
         .form-label-custom { font-weight: bold; text-align: right; font-size: 0.9rem; }
         .modal-header { background-color: transparent; border-bottom: none; }
         .modal-title-custom { color: #008080; font-weight: bold; width: 100%; text-align: center; font-size: 1.3rem;}
+        
+        .total-text { color: #000; font-weight: bold; font-size: 0.8rem;}
     </style>
 </head>
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -230,7 +247,15 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
-                    </ul>
+                    <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="plan.php">แผนงาน</a></li>
+                    <li><a class="dropdown-item" href="Projectoutcomes.php">ผลผลิตโครงการ</a></li>
+                    <li><a class="dropdown-item" href="Activity.php">กิจกรรมหลัก</a></li>
+                    <li><a class="dropdown-item" href="Sourcemoney.php">แหล่งของเงิน</a></li>
+                    <li><a class="dropdown-item" href="Expensesbudget.php">งบรายจ่าย</a></li>
+                    <li><a class="dropdown-item" href="Mainmoney.php">ประเภท(หลัก)ของเงิน</a></li>
+                    <li><a class="dropdown-item" href="Subtypesmoney.php">ประเภท(ย่อย)ของเงิน</a></li>
+                </ul>
             </div>
             
             <div class="dropdown">
@@ -275,21 +300,41 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
-                    </ul>
+                    <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
+                </ul>
             </div>
             
             <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตรวจสอบ</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Check budget allocation.php">ตรวจสอบการจัดสรรงบประมาณ</a></li>
-                    </ul>
+                    <li><a class="dropdown-item" href="Check the periodic financial report.php">รายงานเงินประจำงวด</a></li>
+                    <li><a class="dropdown-item" href="Check main payment type.php">จ่ายเงินประเภทหลัก</a></li>
+                    <li><a class="dropdown-item" href="Check the government advance payment.php">จ่ายเงินทดรองราชการ</a></li>
+                    <li><a class="dropdown-item" href="The appeal number does not exist in the system.php">เลขที่ฎีกาที่ไม่มีในระบบ</a></li>
+                    <li><a class="dropdown-item" href="Appeals regarding project termination classified by invoice.php">ฎีกากับการตัดโครงการจำแนกตามใบงวด</a></li>
+                    <li><a class="dropdown-item" href="Supreme Court Rulings and References for Reimbursement Requests Classified by Ruling.php">ฎีกากับการอ้างอิงการขอเบิกจำแนกตามฎีกา</a></li>
+                    <li><a class="dropdown-item" href="Withdrawal requests that have not yet been submitted for approval.php">รายการขอเบิกฯที่ยังไม่ได้วางฎีกา</a></li>
+                    <li><a class="dropdown-item" href="Requisition items with incorrect installment vouchers.php">รายการขอเบิกฯที่วางฎีกาผิดใบงวด</a></li>
+                </ul>
             </div>
 
             <div class="dropdown">
                 <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">รายงาน</a>
                 <ul class="dropdown-menu">
                     <li><a class="dropdown-item" href="Budget allocation report.php">รายงานการจัดสรรงบประมาณ</a></li>
-                    </ul>
+                    <li><a class="dropdown-item" href="Expenditure report categorized by project.php">รายงานการใช้จ่ายจำแนกตามโครงการ</a></li>
+                    <li><a class="dropdown-item" href="Annuity register.php">ทะเบียนเงินงวด</a></li>
+                    <li><a class="dropdown-item" href="Expenditure report categorized by budget code.php">รายงานการใช้จ่ายจำแนกตามรหัสงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="Expenditure report categorized by type of.php">รายงานการใช้จ่ายจำแนกตามประเภทรายการจ่าย</a></li>
+                    <li><a class="dropdown-item" href="Daily cash balance report.php">รายงานเงินคงเหลือประจำวัน</a></li>
+                    <li><a class="dropdown-item" href="cash book.php">สมุดเงินสด</a></li>
+                    <li><a class="dropdown-item" href="budget report.php">รายงานเงินงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="Report money outside the budget.php">รายงานเงินนอกงบประมาณ</a></li>
+                    <li><a class="dropdown-item" href="State income report.php">รายงานเงินรายได้แผ่นดิน</a></li>
+                    <li><a class="dropdown-item" href="Loan Report.php">รายงานลูกหนี้เงินยืม</a></li>
+                </ul>
             </div>
 
             <a href="#" class="nav-link-custom ms-auto">คู่มือ</a>
@@ -299,7 +344,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
     <div class="container-fluid pb-5 px-3">
         <div class="content-card">
             
-            <h2 class="page-title">ทะเบียนคืนเงินคงคลัง ปีงบประมาณ 2568</h2>
+            <h2 class="page-title">ทะเบียนคืนเงินคงคลัง ปีงบประมาณ <?php echo $active_year; ?></h2>
 
             <div class="d-flex align-items-center mb-2">
                 <button class="btn btn-add" onclick="openAddModal()">
@@ -350,7 +395,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                             echo "</tr>";
 
                         } else {
-                            echo "<tr><td colspan='6' class='text-center py-4 text-muted'>ยังไม่มีข้อมูล</td></tr>";
+                            echo "<tr><td colspan='6' class='text-center py-4 text-muted'>ยังไม่มีข้อมูลในปี $active_year</td></tr>";
                         }
                         ?>
                     </tbody>
@@ -364,7 +409,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <div class="modal-header d-block">
-                    <h5 class="modal-title-custom" id="modalTitle">ลงทะเบียน คืนเงินคงคลัง</h5>
+                    <h5 class="modal-title-custom" id="modalTitle">ลงทะเบียน คืนเงินคงคลัง ปีงบประมาณ <?php echo $active_year; ?></h5>
                 </div>
                 <div class="modal-body form-yellow-bg mx-3 mb-3">
                     <form action="TreasuryRefundRegister.php" method="POST">
@@ -422,7 +467,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
         function openAddModal() {
             document.getElementById('form_action').value = 'add';
             document.getElementById('edit_id').value = '';
-            document.getElementById('modalTitle').innerHTML = 'ลงทะเบียน คืนเงินคงคลัง ปีงบประมาณ 2568';
+            document.getElementById('modalTitle').innerHTML = 'ลงทะเบียน คืนเงินคงคลัง ปีงบประมาณ <?php echo $active_year; ?>';
             document.querySelector('form').reset();
             
             var myModal = new bootstrap.Modal(document.getElementById('addModal'));

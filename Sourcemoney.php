@@ -20,6 +20,17 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+// --- [ส่วนที่เพิ่มใหม่] ดึงปีงบประมาณที่ทำงานอยู่ (Active Year) ---
+$active_year = date("Y") + 543; // ค่าเริ่มต้น (เผื่อกรณีไม่มีการตั้งค่า)
+$sql_check_active = "SELECT budget_year FROM fiscal_years WHERE is_active = 1 LIMIT 1";
+$result_check_active = $conn->query($sql_check_active);
+
+if ($result_check_active->num_rows > 0) {
+    $row_active = $result_check_active->fetch_assoc();
+    $active_year = $row_active['budget_year'];
+}
+// -------------------------------------------------------------
+
 // --- Logic จัดการข้อมูล (CRUD) ---
 
 // 1. ลบข้อมูล
@@ -52,21 +63,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- [แก้ไข] ส่วนการดึงข้อมูลและค้นหา ---
+// --- [แก้ไข] ส่วนการดึงข้อมูลและค้นหา (กรองตาม Active Year) ---
 $search = isset($_GET['search']) ? $_GET['search'] : '';
 
 if ($search != "") {
-    // ถ้ามีการค้นหา ให้กรองด้วย source_code
+    // ถ้ามีการค้นหา ให้กรองด้วย source_code และต้องตรงกับ active_year
     $search_param = "%" . $search . "%";
-    $sql_sources = "SELECT * FROM funding_sources WHERE source_code LIKE ? ORDER BY budget_year DESC, source_code ASC";
+    $sql_sources = "SELECT * FROM funding_sources WHERE source_code LIKE ? AND budget_year = ? ORDER BY source_code ASC";
     $stmt = $conn->prepare($sql_sources);
-    $stmt->bind_param("s", $search_param);
+    $stmt->bind_param("si", $search_param, $active_year);
     $stmt->execute();
     $result_sources = $stmt->get_result();
 } else {
-    // ถ้าไม่มีการค้นหา ให้ดึงทั้งหมดตามปกติ
-    $sql_sources = "SELECT * FROM funding_sources ORDER BY budget_year DESC, source_code ASC";
-    $result_sources = $conn->query($sql_sources);
+    // ถ้าไม่มีการค้นหา ให้ดึงเฉพาะปี Active
+    $sql_sources = "SELECT * FROM funding_sources WHERE budget_year = ? ORDER BY source_code ASC";
+    $stmt = $conn->prepare($sql_sources);
+    $stmt->bind_param("i", $active_year);
+    $stmt->execute();
+    $result_sources = $stmt->get_result();
 }
 
 // --- ดึงข้อมูลปีงบประมาณ (สำหรับ Dropdown) ---
@@ -208,7 +222,10 @@ $current_page = basename($_SERVER['PHP_SELF']);
         </div>
         </div>
 
-    <div class="sub-header">รายการ แหล่งของเงิน</div>
+    <div class="sub-header d-flex justify-content-between">
+        <span>รายการ แหล่งของเงิน</span>
+        <span>ปีงบประมาณที่ทำงาน: <strong><?php echo $active_year; ?></strong></span>
+    </div>
 
    <div class="navbar-custom">
         <div class="container-fluid d-flex flex-wrap">
@@ -335,12 +352,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                 </div>
             </div>
 
-            <div class="info-box">
-                <i class="fa-solid fa-circle-info me-2"></i>
-                หน้านี้ เป็นการกำหนดรหัส ชื่อแหล่งของเงิน โดยใช้รหัสที่กรมบัญชีกลางกำหนดให้ในแต่ละปีงบประมาณสามารถเพิ่ม ลบ แก้ไข ได้ตามความต้องการของผู้ใช้ระบบ เช่น กรณีเพิ่มข้อมูล ให้เลือกที่ <strong>เพิ่มข้อมูล</strong>
-                <br><br>
-                <small class="text-muted">ให้พิมพ์เพิ่ม รหัสแหล่งของเงิน, ชื่อแหล่งของเงิน, ตกลง ระบบก็จะทำการประมวลผลเพิ่มรายการ แหล่งของเงินให้ทันที</small>
-            </div>
+            
 
             <div class="table-responsive">
                 <table class="table table-hover table-custom">
@@ -375,7 +387,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                 echo "</tr>";
                             }
                         } else {
-                            echo "<tr><td colspan='5' class='text-center py-4 text-muted'>ยังไม่มีข้อมูลแหล่งของเงิน</td></tr>";
+                            echo "<tr><td colspan='5' class='text-center py-4 text-muted'>ยังไม่มีข้อมูลแหล่งของเงิน ในปี $active_year</td></tr>";
                         }
                         ?>
                     </tbody>
@@ -399,7 +411,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                             <label class="form-label fw-bold">ปีงบประมาณ</label>
                             <select name="budget_year" class="form-select" required>
                                 <?php foreach($years_options as $y): ?>
-                                    <option value="<?php echo $y; ?>"><?php echo $y; ?></option>
+                                    <option value="<?php echo $y; ?>" <?php echo ($y == $active_year) ? 'selected' : ''; ?>><?php echo $y; ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>

@@ -20,6 +20,17 @@ if ($conn->connect_error) {
     die("Connection failed: " . $conn->connect_error);
 }
 
+// --- [ส่วนที่เพิ่มใหม่] ดึงปีงบประมาณที่ทำงานอยู่ (Active Year) ---
+$active_year = date("Y") + 543; // ค่าเริ่มต้น
+$sql_check_active = "SELECT budget_year FROM fiscal_years WHERE is_active = 1 LIMIT 1";
+$result_check_active = $conn->query($sql_check_active);
+
+if ($result_check_active->num_rows > 0) {
+    $row_active = $result_check_active->fetch_assoc();
+    $active_year = $row_active['budget_year'];
+}
+// -------------------------------------------------------------
+
 // --- สร้างโฟลเดอร์ uploads อัตโนมัติ ---
 if (!file_exists('uploads')) {
     mkdir('uploads', 0777, true);
@@ -71,8 +82,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 
     if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        $stmt = $conn->prepare("INSERT INTO receive_budget (receive_order, doc_date, doc_no, description, transaction_type, amount, file_name) VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("issssds", $receive_order, $doc_date, $doc_no, $description, $transaction_type, $amount, $file_name);
+        // [แก้ไข] เพิ่ม budget_year ลงในคำสั่ง INSERT
+        $stmt = $conn->prepare("INSERT INTO receive_budget (budget_year, receive_order, doc_date, doc_no, description, transaction_type, amount, file_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("iissssds", $active_year, $receive_order, $doc_date, $doc_no, $description, $transaction_type, $amount, $file_name);
         $stmt->execute();
         
     } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
@@ -97,9 +109,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- ดึงข้อมูล ---
-$sql_data = "SELECT * FROM receive_budget ORDER BY receive_order ASC";
-$result_data = $conn->query($sql_data);
+// --- [แก้ไข] ดึงข้อมูลเฉพาะปี Active ---
+$sql_data = "SELECT * FROM receive_budget WHERE budget_year = ? ORDER BY receive_order ASC";
+$stmt = $conn->prepare($sql_data);
+$stmt->bind_param("i", $active_year);
+$stmt->execute();
+$result_data = $stmt->get_result();
 
 // ฟังก์ชันวันที่
 function thai_date_short($date_str) {
@@ -130,7 +145,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ทะเบียนรับเงินงบประมาณ - AMSS++</title>
+    <title>ทะเบียนรับเงินงบประมาณ </title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -238,7 +253,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
 <body>
 
     <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>AMSS++</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
+        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
         
         <div class="user-info">
             <div>
@@ -361,7 +376,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
             
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <div style="width: 100px;"></div> 
-                <h2 class="page-title m-0">ทะเบียนรับเงินงบประมาณ ปีงบประมาณ 2568</h2>
+                <h2 class="page-title m-0">ทะเบียนรับเงินงบประมาณ (ปีงบประมาณ <?php echo $active_year; ?>)</h2>
                 <button class="btn btn-add" data-bs-toggle="modal" data-bs-target="#addModal">
                     <i class="fa-solid fa-plus me-1"></i> เพิ่มรายการ
                 </button>
@@ -436,7 +451,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                                 echo "</tr>";
                             }
                         } else {
-                            echo "<tr><td colspan='12' class='text-center py-4 text-muted'>ยังไม่มีข้อมูล</td></tr>";
+                            echo "<tr><td colspan='12' class='text-center py-4 text-muted'>ยังไม่มีข้อมูลรายการในปี " . $active_year . "</td></tr>";
                         }
                         ?>
                     </tbody>
