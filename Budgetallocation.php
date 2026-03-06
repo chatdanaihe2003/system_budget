@@ -1,42 +1,42 @@
 <?php
-session_start(); // 1. เริ่มต้น Session
+// [1. เรียกใช้ DB] (รวม Session, Check Login, Active Year, Date Functions มาให้แล้ว)
+require_once 'includes/db.php'; 
 
-// 2. ตรวจสอบว่าได้ Login หรือยัง ถ้ายังให้เด้งไปหน้า Login
-if (!isset($_SESSION['user_id'])) {
-    header("Location: Login.php");
-    exit();
-}
+// ตั้งค่าตัวแปรสำหรับ Header
+$page_title = "ทะเบียนโอนการเปลี่ยนแปลงการจัดสรรงบประมาณ - AMSS++";
+$current_page = basename($_SERVER['PHP_SELF']); 
+$page_header = 'ทะเบียนโอนการเปลี่ยนแปลงการจัดสรรงบประมาณ';
 
-// --- เชื่อมต่อฐานข้อมูล ---
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "system_budget";
+// --------------------------------------------------------------------------------
+// --- Logic จัดการข้อมูล (CRUD & Upload) 
+// --------------------------------------------------------------------------------
 
-$conn = new mysqli($servername, $username, $password, $dbname);
-$conn->set_charset("utf8");
-
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
-
-// --- [ส่วนที่เพิ่มใหม่] ดึงปีงบประมาณที่ทำงานอยู่ (Active Year) ---
-$active_year = date("Y") + 543; // ค่าเริ่มต้น
-$sql_check_active = "SELECT budget_year FROM fiscal_years WHERE is_active = 1 LIMIT 1";
-$result_check_active = $conn->query($sql_check_active);
-
-if ($result_check_active->num_rows > 0) {
-    $row_active = $result_check_active->fetch_assoc();
-    $active_year = $row_active['budget_year'];
-}
-// -------------------------------------------------------------
-
-// --- สร้างโฟลเดอร์ uploads อัตโนมัติ ---
+// --- สร้างโฟลเดอร์ uploads อัตโนมัติ (ถ้ายังไม่มี) ---
 if (!file_exists('uploads')) {
     mkdir('uploads', 0777, true);
 }
 
-// --- Logic จัดการข้อมูล (CRUD & Upload) ---
+// --- ตรวจสอบและสร้างคอลัมน์ใหม่ในฐานข้อมูล เพื่อรองรับฟอร์มให้ครบถ้วนตามรูปภาพ ---
+$columns_to_add = [
+    'doc_no' => "VARCHAR(255) NULL AFTER doc_date",
+    'ref_alloc_doc' => "VARCHAR(255) NULL AFTER doc_no",
+    'plan_type' => "VARCHAR(255) NULL AFTER ref_alloc_doc",
+    'project_type' => "VARCHAR(255) NULL AFTER plan_type",
+    'main_activity' => "VARCHAR(255) NULL AFTER project_type",
+    'sub_activity' => "TEXT NULL AFTER main_activity",
+    'fund_source' => "VARCHAR(255) NULL AFTER sub_activity",
+    'account_code' => "VARCHAR(255) NULL AFTER fund_source",
+    'expense_budget' => "VARCHAR(255) NULL AFTER account_code",
+    'detail_desc' => "TEXT NULL AFTER description",
+    'recorded_by' => "VARCHAR(255) NULL AFTER amount" // เพิ่มคอลัมน์ผู้บันทึกข้อมูล
+];
+
+foreach ($columns_to_add as $col_name => $col_definition) {
+    $check_col = $conn->query("SHOW COLUMNS FROM budget_allocations LIKE '$col_name'");
+    if ($check_col && $check_col->num_rows == 0) {
+        $conn->query("ALTER TABLE budget_allocations ADD $col_name $col_definition");
+    }
+}
 
 // 1. ลบข้อมูล
 if (isset($_GET['delete_id'])) {
@@ -63,13 +63,27 @@ if (isset($_GET['delete_id'])) {
 
 // 2. เพิ่ม หรือ แก้ไขข้อมูล
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $allocation_order = $_POST['allocation_order'];
-    $doc_date = $_POST['doc_date'];
-    $description = $_POST['description'];
-    $amount = $_POST['amount'];
+
+    // รับค่าจากฟอร์มให้ครบทุกช่อง
+    $doc_no = $_POST['doc_no'] ?? '';
+    $doc_date = $_POST['doc_date'] ?? '';
+    $ref_alloc_doc = $_POST['ref_alloc_doc'] ?? '';
+    $plan_type = $_POST['plan_type'] ?? '';
+    $project_type = $_POST['project_type'] ?? '';
+    $main_activity = $_POST['main_activity'] ?? '';
+    $sub_activity = $_POST['sub_activity'] ?? '';
+    $fund_source = $_POST['fund_source'] ?? '';
+    $account_code = $_POST['account_code'] ?? '';
+    $expense_budget = $_POST['expense_budget'] ?? '';
+    $description = $_POST['description'] ?? '';
+    $detail_desc = $_POST['detail_desc'] ?? '';
+    $amount = $_POST['amount'] ?? 0;
     
     $file_name = null;
     
+    // ดึงชื่อผู้บันทึกจาก Session
+    $recorded_by = $_SESSION['name'] ?? $_SESSION['username'] ?? 'Admin'; 
+
     // จัดการอัปโหลดไฟล์
     if (isset($_FILES['file_upload']) && $_FILES['file_upload']['error'] == 0) {
         $ext = pathinfo($_FILES['file_upload']['name'], PATHINFO_EXTENSION);
@@ -80,13 +94,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 
     if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        // [แก้ไข] เพิ่ม budget_year ลงในคำสั่ง INSERT
-        $stmt = $conn->prepare("INSERT INTO budget_allocations (budget_year, allocation_order, doc_date, description, amount, file_name) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("iissds", $active_year, $allocation_order, $doc_date, $description, $amount, $file_name);
+        // หาระดับเลขที่ใบงวดถัดไปอัตโนมัติก่อนบันทึก
+        $sql_max = "SELECT MAX(allocation_order) as max_order FROM budget_allocations WHERE budget_year = ?";
+        $stmt_max = $conn->prepare($sql_max);
+        $stmt_max->bind_param("i", $active_year);
+        $stmt_max->execute();
+        $res_max = $stmt_max->get_result();
+        $row_max = $res_max->fetch_assoc();
+        $auto_allocation_order = ($row_max['max_order'] ? $row_max['max_order'] : 0) + 1;
+
+        $sql_insert = "INSERT INTO budget_allocations (budget_year, allocation_order, doc_no, doc_date, ref_alloc_doc, plan_type, project_type, main_activity, sub_activity, fund_source, account_code, expense_budget, description, detail_desc, amount, recorded_by, file_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        
+        $stmt = $conn->prepare($sql_insert);
+        $stmt->bind_param("iissssssssssssdss", $active_year, $auto_allocation_order, $doc_no, $doc_date, $ref_alloc_doc, $plan_type, $project_type, $main_activity, $sub_activity, $fund_source, $account_code, $expense_budget, $description, $detail_desc, $amount, $recorded_by, $file_name);
         $stmt->execute();
         
     } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
         $id = $_POST['edit_id'];
+        $allocation_order = $_POST['allocation_order']; // คงค่าเดิม
         
         if ($file_name) {
             // ลบไฟล์เก่าถ้ามีการอัปโหลดใหม่
@@ -96,11 +121,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 unlink("uploads/".$old['file_name']);
             }
             
-            $stmt = $conn->prepare("UPDATE budget_allocations SET allocation_order=?, doc_date=?, description=?, amount=?, file_name=? WHERE id=?");
-            $stmt->bind_param("issdsi", $allocation_order, $doc_date, $description, $amount, $file_name, $id);
+            $sql_update = "UPDATE budget_allocations SET allocation_order=?, doc_no=?, doc_date=?, ref_alloc_doc=?, plan_type=?, project_type=?, main_activity=?, sub_activity=?, fund_source=?, account_code=?, expense_budget=?, description=?, detail_desc=?, amount=?, file_name=? WHERE id=?";
+            $stmt = $conn->prepare($sql_update);
+            $stmt->bind_param("isssssssssssssi", $allocation_order, $doc_no, $doc_date, $ref_alloc_doc, $plan_type, $project_type, $main_activity, $sub_activity, $fund_source, $account_code, $expense_budget, $description, $detail_desc, $amount, $file_name, $id);
         } else {
-            $stmt = $conn->prepare("UPDATE budget_allocations SET allocation_order=?, doc_date=?, description=?, amount=? WHERE id=?");
-            $stmt->bind_param("issdi", $allocation_order, $doc_date, $description, $amount, $id);
+            $sql_update = "UPDATE budget_allocations SET allocation_order=?, doc_no=?, doc_date=?, ref_alloc_doc=?, plan_type=?, project_type=?, main_activity=?, sub_activity=?, fund_source=?, account_code=?, expense_budget=?, description=?, detail_desc=?, amount=? WHERE id=?";
+            $stmt = $conn->prepare($sql_update);
+            $stmt->bind_param("isssssssssssssi", $allocation_order, $doc_no, $doc_date, $ref_alloc_doc, $plan_type, $project_type, $main_activity, $sub_activity, $fund_source, $account_code, $expense_budget, $description, $detail_desc, $amount, $id);
         }
         $stmt->execute();
     }
@@ -108,455 +135,402 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- [แก้ไข] ดึงข้อมูลเฉพาะปี Active ---
+// --- ดึงข้อมูลเฉพาะปี Active ---
 $sql_data = "SELECT * FROM budget_allocations WHERE budget_year = ? ORDER BY allocation_order ASC";
 $stmt = $conn->prepare($sql_data);
 $stmt->bind_param("i", $active_year);
 $stmt->execute();
 $result_data = $stmt->get_result();
 
-// ฟังก์ชันวันที่ไทยย่อ
-function thai_date_short($date_str) {
-    if(!$date_str) return "";
-    $timestamp = strtotime($date_str);
-    $thai_month_arr = array("0"=>"","1"=>"ม.ค.","2"=>"ก.พ.","3"=>"มี.ค.","4"=>"เม.ย.","5"=>"พ.ค.","6"=>"มิ.ย.","7"=>"ก.ค.","8"=>"ส.ค.","9"=>"ก.ย.","10"=>"ต.ค.","11"=>"พ.ย.","12"=>"ธ.ค.");
-    $d = date("j", $timestamp);
-    $m = date("n", $timestamp);
-    $y = (date("Y", $timestamp) + 543) - 2500; 
-    return "$d {$thai_month_arr[$m]} $y";
-}
+$sql_next = "SELECT MAX(allocation_order) as max_order FROM budget_allocations WHERE budget_year = ?";
+$stmt_next = $conn->prepare($sql_next);
+$stmt_next->bind_param("i", $active_year);
+$stmt_next->execute();
+$res_next = $stmt_next->get_result();
+$row_next = $res_next->fetch_assoc();
+$next_allocation_order = ($row_next['max_order'] ? $row_next['max_order'] : 0) + 1;
 
-// ฟังก์ชันวันที่ไทยเต็ม
-function thai_date_full($timestamp) {
-    $thai_day_arr = array("อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์");
-    $thai_month_arr = array("0"=>"","1"=>"มกราคม","2"=>"กุมภาพันธ์","3"=>"มีนาคม","4"=>"เมษายน","5"=>"พฤษภาคม","6"=>"มิถุนายน","7"=>"กรกฎาคม","8"=>"สิงหาคม","9"=>"กันยายน","10"=>"ตุลาคม","11"=>"พฤศจิกายน","12"=>"ธันวาคม");
-    $d = date("j", $timestamp);
-    $m = date("n", $timestamp);
-    $y = date("Y", $timestamp) + 543;
-    return "วัน" . $thai_day_arr[date("w", $timestamp)] . "ที่ $d $thai_month_arr[$m] พ.ศ. $y";
-}
+$total_amount = 0;
 
-// *** เช็คหน้าปัจจุบัน ***
-$current_page = basename($_SERVER['PHP_SELF']);
+require_once 'includes/header.php';
+require_once 'includes/navbar.php';
 ?>
 
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ทะเบียนโอนการเปลี่ยนแปลงการจัดสรรงบประมาณ - AMSS++</title>
-    
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+    .warning-icon { color: #dc3545; margin-left: 5px; }
+    .total-text { color: #d63384; font-weight: bold; }
+    .total-row { background-color: #f8f9fa !important; font-weight: bold; color: #333; }
+    .btn-file { color: #6c757d; font-size: 1.1rem; border: none; background: none; cursor: pointer; transition: 0.2s;}
+    .btn-file:hover { transform: scale(1.2); }
+    .btn-file-active { color: #198754; font-size: 1.1rem; border: none; background: none; cursor: pointer; transition: 0.2s;}
+    .btn-file-active:hover { transform: scale(1.2); }
 
-    <style>
-        :root {
-            --primary-dark: #0A192F;
-            --accent-yellow: #FFC107;
-            --accent-gold: #c59d0a;
-            --bg-light: #f4f7f6;
-            --menu-bg: #212529;
-        }
-        body {
-            font-family: 'Sarabun', sans-serif;
-            background-color: var(--bg-light);
-            color: #333;
-        }
-        
-        .top-header { background-color: var(--primary-dark); color: white; padding: 10px 20px; }
-        
-        /* User Info & Logout Button Styles */
-        .user-info { font-size: 0.9rem; text-align: right; }
-        .user-role { color: var(--accent-yellow); font-weight: 700; text-transform: uppercase; }
-        .btn-logout {
-            color: #ff6b6b;
-            text-decoration: none;
-            margin-left: 10px;
-            font-size: 0.85rem;
-            border: 1px solid #ff6b6b;
-            padding: 2px 8px;
-            border-radius: 4px;
-            transition: all 0.2s;
-        }
-        .btn-logout:hover { background-color: #ff6b6b; color: white; }
+    /* CSS สำหรับฟอร์มใน Modal ให้คงดีไซน์ขาวสะอาดตามเดิม */
+    .form-white-bg { background-color: #ffffff; padding: 25px 40px; border-radius: 8px; border: 1px solid #e0e0e0; }
+    .form-label-custom { font-weight: normal; text-align: right; font-size: 0.95rem; color: #000; padding-top: 5px; }
+    .modal-header { border-bottom: 1px solid #dee2e6; background-color: #ffffff; border-top-left-radius: 12px; border-top-right-radius: 12px; }
+    .modal-title-custom { color: #006666; font-weight: bold; width: 100%; text-align: center; font-size: 1.2rem;}
+    .modal-content { border-radius: 12px; border: none; box-shadow: 0 10px 30px rgba(0,0,0,0.15); }
+    .btn-form { padding: 6px 25px; background-color: #0d6efd; border: none; color: #fff; border-radius: 4px; font-size: 0.95rem; }
+    .btn-form:hover { background-color: #0b5ed7; color: #fff; }
+    .btn-form-secondary { padding: 6px 25px; background-color: #6c757d; border: none; color: #fff; border-radius: 4px; font-size: 0.95rem; }
+    .btn-form-secondary:hover { background-color: #5c636a; color: #fff; }
+</style>
 
-        .sub-header { background: linear-gradient(90deg, var(--accent-yellow) 0%, var(--accent-gold) 100%); padding: 8px 20px; font-weight: 700; color: var(--primary-dark); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .navbar-custom { background-color: var(--menu-bg); padding: 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+<div class="container-fluid pb-5 px-4">
+    <div class="content-card">
         
-        /* CSS Active Menu Logic */
-        .nav-link-custom { color: #aaa; padding: 12px 20px; text-decoration: none; display: inline-block; transition: all 0.3s; border-bottom: 3px solid transparent; font-size: 0.95rem; }
-        .nav-link-custom:hover, .nav-link-custom.active { 
-            color: #fff; 
-            background-color: #333; 
-            border-bottom-color: var(--accent-yellow); 
-        }
-        
-        .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
-        .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
-        
-        /* [แก้ไข] เพิ่มสไตล์สำหรับเมนู Active ให้เป็นตัวหนาสีดำ */
-        .dropdown-item.active, .dropdown-item:active {
-            background-color: white; 
-            color: black !important; /* บังคับตัวหนังสือสีดำ */
-            font-weight: bold !important; /* บังคับตัวหนา */
-        }
-        
-        .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
-        .page-title { color: #d63384; font-weight: 700; text-align: center; margin-bottom: 25px; font-size: 1.4rem; }
-        
-        .table-custom th { 
-            background-color: #998a00; 
-            color: white; 
-            font-weight: 500; 
-            text-align: center; 
-            vertical-align: middle; 
-            border: 1px solid rgba(255,255,255,0.2); 
-            font-size: 0.9rem; 
-        }
-        .table-custom td { 
-            vertical-align: middle; 
-            border-color: #eee; 
-            padding: 10px; 
-            font-size: 0.9rem; 
-        }
-        
-        .td-center { text-align: center; }
-        .td-right { text-align: right; }
-        .td-left { text-align: left; }
-
-        .btn-add { background-color: #0d6efd; color: white; border-radius: 50px; padding: 8px 25px; font-weight: 600; box-shadow: 0 4px 6px rgba(13, 110, 253, 0.2); transition: transform 0.2s; text-decoration: none; border:none; cursor: pointer; }
-        .btn-add:hover { background-color: #0b5ed7; color: white; transform: translateY(-2px); }
-        
-        .action-btn { border: none; background: none; cursor: pointer; transition: 0.2s; font-size: 1rem; }
-        .btn-edit { color: #ffc107; }
-        .btn-delete { color: #dc3545; }
-        .btn-print { color: #0d6efd; }
-        .btn-file { color: #6c757d; }
-        .btn-file-active { color: #198754; } 
-        .action-btn:hover { transform: scale(1.2); }
-
-        .modal-header { background-color: var(--primary-dark); color: white; }
-        .btn-close { filter: invert(1); }
-        
-        .warning-icon { color: #dc3545; margin-left: 5px; }
-        .total-text { color: #d63384; font-weight: bold; }
-    </style>
-</head>
-<body>
-
-    <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
-        
-        <div class="user-info">
-            <div>
-                ผู้ใช้ : <?php echo htmlspecialchars($_SESSION['fullname']); ?> 
-                (<span class="user-role">**<?php echo $_SESSION['role']; ?>**</span>)
-                <a href="Logout.php" class="btn-logout" onclick="return confirm('ยืนยันออกจากระบบ?');">
-                    <i class="fa-solid fa-power-off"></i> ออก
-                </a>
-            </div>
-            <small class="text-white-50"><?php echo thai_date_full(time()); ?></small>
-        </div>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div style="width: 100px;"></div> 
+            <h2 class="page-title m-0">ทะเบียนโอนการเปลี่ยนแปลงการจัดสรรงบประมาณ (ปีงบประมาณ <?php echo $active_year; ?>)</h2>
+            <button class="btn btn-add" onclick="checkAdminAction('add')">
+                <i class="fa-solid fa-plus me-1"></i> เพิ่มรายการ
+            </button>
         </div>
 
-    <div class="sub-header">ทะเบียนโอนการเปลี่ยนแปลงการจัดสรรงบประมาณ</div>
+        <div class="table-responsive">
+            <table class="table table-hover table-custom">
+                <thead>
+                    <tr>
+                        <th style="width: 5%;">ที่ใบงวด</th>
+                        <th style="width: 8%;">ว/ด/ป</th>
+                        <th style="width: 10%;">หนังสือเลขที่</th>
+                        <th style="width: 32%;">รายการ</th>
+                        <th style="width: 12%;">จำนวนเงิน</th>
+                        <th style="width: 5%;">รายละเอียด</th>
+                        <th style="width: 5%;">File</th>
+                        <th style="width: 5%;">ลบ</th>
+                        <th style="width: 5%;">แก้ไข</th>
+                        <th style="width: 5%;">พิมพ์</th>
+                        <th style="width: 5%;">รวม</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php 
+                    if ($result_data->num_rows > 0) {
+                        while($row = $result_data->fetch_assoc()) {
+                            $total_amount += $row['amount'];
+                            $has_file = !empty($row['file_name']);
+                            echo "<tr>";
+                            echo "<td class='td-center fw-bold'>" . $row['allocation_order'] . "</td>";
+                            echo "<td class='td-center'>" . thai_date_short($row['doc_date']) . "</td>";
+                            echo "<td class='td-left'>" . htmlspecialchars($row['doc_no'] ?? '-') . "</td>";
+                            echo "<td class='td-left'>" . htmlspecialchars($row['description']) . " <i class='fa-solid fa-triangle-exclamation warning-icon'></i></td>";
+                            echo "<td class='td-right fw-bold text-success'>" . number_format($row['amount'], 2) . "</td>";
+                            
+                            echo "<td class='td-center'>";
+                            echo '<button class="action-btn" title="รายละเอียด" onclick="openDetailModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
+                                          <i class="fa-regular fa-rectangle-list"></i>
+                                      </button>';
+                            echo "</td>";
 
-   <div class="navbar-custom">
-        <div class="container-fluid d-flex flex-wrap">
-            <a href="index.php" class="nav-link-custom">รายการหลัก</a>
-            
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
-                    <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="plan.php">แผนงาน</a></li>
-                    <li><a class="dropdown-item" href="Projectoutcomes.php">ผลผลิตโครงการ</a></li>
-                    <li><a class="dropdown-item" href="Activity.php">กิจกรรมหลัก</a></li>
-                    <li><a class="dropdown-item" href="Sourcemoney.php">แหล่งของเงิน</a></li>
-                    <li><a class="dropdown-item" href="Expensesbudget.php">งบรายจ่าย</a></li>
-                    <li><a class="dropdown-item" href="Mainmoney.php">ประเภท(หลัก)ของเงิน</a></li>
-                    <li><a class="dropdown-item" href="Subtypesmoney.php">ประเภท(ย่อย)ของเงิน</a></li>
-                </ul>
-            </div>
-            
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom active dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนรับ</a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item <?php echo ($current_page == 'Budgetallocation.php') ? 'active' : ''; ?>" href="Budgetallocation.php">รับการจัดสรรงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Receivebudget.php">รับเงินงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Receiveoffbudget.php">รับเงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Receivenational.php">รับเงินรายได้แผ่นดิน</a></li>
-                </ul>
-            </div>
+                            echo "<td class='td-center'>";
+                            if ($has_file) {
+                                echo '<a href="uploads/'.$row['file_name'].'" target="_blank" class="btn-file-active" title="ดาวน์โหลดไฟล์"><i class="fa-solid fa-arrow-up-from-bracket"></i></a>';
+                            } else {
+                                echo '<button class="btn-file" title="คลิกเพื่อแนบไฟล์" onclick=\'checkAdminAction("edit", '.json_encode($row).')\'>
+                                            <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                                      </button>';
+                            }
+                            echo "</td>";
 
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนขอเบิก</a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="RequestforWithdrawalProjectLoan.php">ทะเบียนขอเบิก/ขอยืมเงินโครงการ</a></li>
-                    <li><a class="dropdown-item" href="ProjectRefundRegistration.php">***ทะเบียนคืนเงินโครงการ</a></li>
-                    <li><a class="dropdown-item" href="TreasuryWithdrawal.php">ทะเบียนขอเบิกเงินคงคลัง</a></li>
-                    <li><a class="dropdown-item" href="TreasuryRefundRegister.php">***ทะเบียนคืนเงินคงคลัง</a></li>
-                    <li><a class="dropdown-item" href="Withdrawtheappeal.php">***ยกเลิกฎีกา</a></li>
-                    <li><a class="dropdown-item" href="Fundrolloverregister.php">ทะเบียนเงินกันเหลื่อมปี</a></li>
-                </ul>
-            </div>
+                            echo "<td class='td-center'>";
+                            echo '<a href="javascript:void(0)" onclick="checkAdminDelete('.$row['id'].')" class="action-btn btn-delete" title="ลบ"><i class="fa-solid fa-xmark"></i></a>';
+                            echo "</td>";
 
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนจ่าย</a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="Authorizebudgetexpenditures.php">สั่งจ่ายเงินงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Orderpaymentoutsidethebudget.php">สั่งจ่ายเงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Orderpaymentofstaterevenue.php">สั่งจ่ายเงินรายได้แผ่นดิน</a></li>
-                    <li><a class="dropdown-item" href="Governmentadvancefunds.php">เงินทดรองราชการ</a></li>
-                    <li><a class="dropdown-item" href="Approvedformaintypepayment.php">อนุมัติจ่ายเงินประเภทหลัก</a></li>
-                    <li><a class="dropdown-item" href="Approved for governmentadvancepayment.php">อนุมัติจ่ายเงินทดรองราชการ</a></li>
-                    <li><a class="dropdown-item" href="Major type of payment.php">จ่ายเงินประเภทหลัก</a></li>
-                    <li><a class="dropdown-item" href="Advance payment for government service.php">จ่ายเงินทดรองราชการ</a></li>
-                </ul>
-            </div>
+                            echo "<td class='td-center'>";
+                            echo '<button class="action-btn btn-edit" title="แก้ไข" onclick=\'checkAdminAction("edit", '.json_encode($row).')\'><i class="fa-solid fa-pen"></i></button>';
+                            echo "</td>";
 
-             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
-                </ul>
-            </div>
-            
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตรวจสอบ</a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="Check budget allocation.php">ตรวจสอบการจัดสรรงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Check the periodic financial report.php">รายงานเงินประจำงวด</a></li>
-                    <li><a class="dropdown-item" href="Check main payment type.php">จ่ายเงินประเภทหลัก</a></li>
-                    <li><a class="dropdown-item" href="Check the government advance payment.php">จ่ายเงินทดรองราชการ</a></li>
-                    <li><a class="dropdown-item" href="The appeal number does not exist in the system.php">เลขที่ฎีกาที่ไม่มีในระบบ</a></li>
-                    <li><a class="dropdown-item" href="Appeals regarding project termination classified by invoice.php">ฎีกากับการตัดโครงการจำแนกตามใบงวด</a></li>
-                    <li><a class="dropdown-item" href="Supreme Court Rulings and References for Reimbursement Requests Classified by Ruling.php">ฎีกากับการอ้างอิงการขอเบิกจำแนกตามฎีกา</a></li>
-                    <li><a class="dropdown-item" href="Withdrawal requests that have not yet been submitted for approval.php">รายการขอเบิกฯที่ยังไม่ได้วางฎีกา</a></li>
-                    <li><a class="dropdown-item" href="Requisition items with incorrect installment vouchers.php">รายการขอเบิกฯที่วางฎีกาผิดใบงวด</a></li>
-                </ul>
-            </div>
+                            echo "<td class='td-center'>";
+                            echo '<button class="action-btn btn-print" title="พิมพ์" onclick="printItem('.$row['id'].')"><i class="fa-solid fa-print"></i></button>';
+                            echo "</td>";
 
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">รายงาน</a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="Budget allocation report.php">รายงานการจัดสรรงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Expenditure report categorized by project.php">รายงานการใช้จ่ายจำแนกตามโครงการ</a></li>
-                    <li><a class="dropdown-item" href="Annuity register.php">ทะเบียนเงินงวด</a></li>
-                    <li><a class="dropdown-item" href="Expenditure report categorized by budget code.php">รายงานการใช้จ่ายจำแนกตามรหัสงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Expenditure report categorized by type of.php">รายงานการใช้จ่ายจำแนกตามประเภทรายการจ่าย</a></li>
-                    <li><a class="dropdown-item" href="Daily cash balance report.php">รายงานเงินคงเหลือประจำวัน</a></li>
-                    <li><a class="dropdown-item" href="cash book.php">สมุดเงินสด</a></li>
-                    <li><a class="dropdown-item" href="budget report.php">รายงานเงินงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Report money outside the budget.php">รายงานเงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="State income report.php">รายงานเงินรายได้แผ่นดิน</a></li>
-                    <li><a class="dropdown-item" href="Loan Report.php">รายงานลูกหนี้เงินยืม</a></li>
-                </ul>
-            </div>
+                            echo "<td class='td-center total-text'>ถึงนี้</td>";
+                            echo "</tr>";
+                        }
+                        echo "<tr class='total-row'>";
+                        echo "<td colspan='4' class='text-center'>รวม</td>";
+                        echo "<td class='td-right text-success'>" . number_format($total_amount, 2) . "</td>";
+                        echo "<td colspan='6'></td>";
+                        echo "</tr>";
+                    } else {
+                        echo "<tr><td colspan='11' class='text-center py-5 text-muted'>ยังไม่มีข้อมูลรายการในปี " . $active_year . "</td></tr>";
+                    }
+                    ?>
+                </tbody>
+            </table>
+        </div>
 
-            <a href="#" class="nav-link-custom ms-auto">คู่มือ</a>
+    </div>
+</div>
+
+<div class="modal fade" id="addModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header d-block pb-2 border-bottom">
+                <h5 class="modal-title-custom text-teal" id="modalTitle">เพิ่มรายการจัดสรรงบประมาณ</h5>
+            </div>
+            <div class="modal-body mx-3 my-3 pt-0">
+                <div class="form-white-bg border-0 p-0 mt-3">
+                    <form action="Budgetallocation.php" method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="action" id="form_action" value="add">
+                        <input type="hidden" name="edit_id" id="edit_id">
+                        
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">ที่ใบงวด (อัตโนมัติ)</div>
+                            <div class="col-md-3">
+                                <input type="number" name="allocation_order" id="allocation_order" class="form-control form-control-sm" style="background-color: #f1f5f9; cursor: not-allowed;" readonly required>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">วันที่เอกสาร</div>
+                            <div class="col-md-4">
+                                <input type="date" name="doc_date" id="doc_date" class="form-control form-control-sm" value="<?php echo date('Y-m-d'); ?>" required>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">ที่เอกสาร</div>
+                            <div class="col-md-4">
+                                <input type="text" name="doc_no" id="doc_no" class="form-control form-control-sm" required>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">รายการ</div>
+                            <div class="col-md-8">
+                                <input type="text" name="description" id="description" class="form-control form-control-sm" required>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">อ้างถึงหนังสือจัดสรร</div>
+                            <div class="col-md-4">
+                                <input type="text" name="ref_alloc_doc" id="ref_alloc_doc" class="form-control form-control-sm">
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">แผนงาน</div>
+                            <div class="col-md-5">
+                                <select name="plan_type" id="plan_type" class="form-select form-select-sm">
+                                    <option value="">เลือก</option>
+                                    <option value="แผนงานพื้นฐาน">แผนงานพื้นฐาน</option>
+                                    <option value="แผนงานยุทธศาสตร์">แผนงานยุทธศาสตร์</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">ผลผลิต/โครงการ</div>
+                            <div class="col-md-8">
+                                <select name="project_type" id="project_type" class="form-select form-select-sm">
+                                    <option value="">เลือก</option>
+                                    <option value="ผลผลิตที่ 1">ผลผลิตที่ 1</option>
+                                    <option value="โครงการ A">โครงการ A</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">กิจกรรมหลัก</div>
+                            <div class="col-md-8">
+                                <select name="main_activity" id="main_activity" class="form-select form-select-sm">
+                                    <option value="">เลือก</option>
+                                    <option value="กิจกรรมที่ 1">กิจกรรมที่ 1</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-start">
+                            <div class="col-md-4 form-label-custom mt-1">กิจกรรมหลักเพิ่มเติม</div>
+                            <div class="col-md-6">
+                                <textarea name="sub_activity" id="sub_activity" rows="2" class="form-control form-control-sm"></textarea>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">แหล่งของเงิน</div>
+                            <div class="col-md-5">
+                                <select name="fund_source" id="fund_source" class="form-select form-select-sm">
+                                    <option value="">เลือก</option>
+                                    <option value="เงินงบประมาณ">เงินงบประมาณ</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">รหัสทางบัญชี</div>
+                            <div class="col-md-3">
+                                <input type="text" name="account_code" id="account_code" class="form-control form-control-sm">
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">งบรายจ่าย</div>
+                            <div class="col-md-3">
+                                <select name="expense_budget" id="expense_budget" class="form-select form-select-sm">
+                                    <option value="">เลือก</option>
+                                    <option value="งบบุคลากร">งบบุคลากร</option>
+                                    <option value="งบดำเนินงาน">งบดำเนินงาน</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-start">
+                            <div class="col-md-4 form-label-custom mt-1">รายละเอียดเพิ่มเติม</div>
+                            <div class="col-md-6">
+                                <textarea name="detail_desc" id="detail_desc" rows="3" class="form-control form-control-sm"></textarea>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">จำนวนเงิน</div>
+                            <div class="col-md-4">
+                                <input type="number" step="0.01" name="amount" id="amount" class="form-control form-control-sm" required>
+                            </div>
+                            <div class="col-md-1 pt-1 text-start">บาท</div>
+                        </div>
+
+                        <div class="row mb-4 align-items-center">
+                            <div class="col-md-4 form-label-custom">แนบไฟล์ (PDF/รูปภาพ)</div>
+                            <div class="col-md-7">
+                                <input type="file" name="file_upload" id="file_upload" class="form-control form-control-sm">
+                                <small class="text-muted d-block mt-1">* อัปโหลดไฟล์เพื่อบันทึก (เลือกได้)</small>
+                            </div>
+                        </div>
+
+                        <div class="text-center mt-4 pt-3 border-top">
+                            <button type="submit" class="btn-form me-2">ตกลง</button>
+                            <button type="button" class="btn-form-secondary" data-bs-dismiss="modal">ย้อนกลับ</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
+</div>
 
-    <div class="container-fluid pb-5 px-4">
-        <div class="content-card">
-            
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <div style="width: 100px;"></div> 
-                <h2 class="page-title m-0">ทะเบียนโอนการเปลี่ยนแปลงการจัดสรรงบประมาณ (ปีงบประมาณ <?php echo $active_year; ?>)</h2>
-                <button class="btn btn-add" data-bs-toggle="modal" data-bs-target="#addModal">
-                    <i class="fa-solid fa-plus me-1"></i> เพิ่มรายการ
-                </button>
+<div class="modal fade" id="detailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-light border-bottom">
+                <h5 class="modal-title text-primary fw-bold"><i class="fa-solid fa-circle-info"></i> ข้อมูลการจัดสรรงบประมาณอย่างละเอียด</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-
-            <div class="table-responsive">
-                <table class="table table-hover table-custom">
-                    <thead>
-                        <tr>
-                            <th style="width: 5%;">ที่/งวด</th>
-                            <th style="width: 8%;">ว/ด/ป</th>
-                            <th style="width: 40%;">รายการ</th>
-                            <th style="width: 12%;">จำนวนเงิน</th>
-                            <th style="width: 5%;">ราย<br>ละเอียด</th>
-                            <th style="width: 5%;">File</th>
-                            <th style="width: 5%;">ลบ</th>
-                            <th style="width: 5%;">แก้ไข</th>
-                            <th style="width: 5%;">พิมพ์</th>
-                            <th style="width: 5%;">รวม</th>
-                        </tr>
-                    </thead>
+            <div class="modal-body mx-3">
+                <table class="table table-bordered table-sm mb-0 mt-2">
                     <tbody>
-                        <?php 
-                        if ($result_data->num_rows > 0) {
-                            while($row = $result_data->fetch_assoc()) {
-                                $has_file = !empty($row['file_name']);
-                                echo "<tr>";
-                                echo "<td class='td-center'>" . $row['allocation_order'] . "</td>";
-                                echo "<td class='td-center'>" . thai_date_short($row['doc_date']) . "</td>";
-                                echo "<td class='td-left'>" . $row['description'] . " <i class='fa-solid fa-triangle-exclamation warning-icon'></i></td>";
-                                echo "<td class='td-right'>" . number_format($row['amount'], 2) . "</td>";
-                                
-                                // ปุ่มรายละเอียด
-                                echo "<td class='td-center'>";
-                                echo '<button class="action-btn" title="รายละเอียด" onclick="openDetailModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
-                                            <i class="fa-regular fa-rectangle-list"></i>
-                                      </button>';
-                                echo "</td>";
-
-                                // ปุ่ม File
-                                echo "<td class='td-center'>";
-                                if ($has_file) {
-                                    echo '<a href="uploads/'.$row['file_name'].'" target="_blank" class="action-btn btn-file-active" title="ดาวน์โหลดไฟล์"><i class="fa-solid fa-arrow-up-from-bracket"></i></a>';
-                                } else {
-                                    echo '<button class="action-btn btn-file" title="คลิกเพื่อแนบไฟล์" onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
-                                              <i class="fa-solid fa-arrow-up-from-bracket"></i>
-                                          </button>';
-                                }
-                                echo "</td>";
-
-                                // ปุ่มลบ
-                                echo "<td class='td-center'>";
-                                echo '<a href="?delete_id='.$row['id'].'" class="action-btn btn-delete" onclick="return confirm(\'คุณต้องการลบรายการนี้หรือไม่?\')" title="ลบ"><i class="fa-solid fa-xmark"></i></a>';
-                                echo "</td>";
-
-                                // ปุ่มแก้ไข
-                                echo "<td class='td-center'>";
-                                echo '<button class="action-btn btn-edit" title="แก้ไข" onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')"><i class="fa-solid fa-pen"></i></button>';
-                                echo "</td>";
-
-                                // ปุ่มพิมพ์
-                                echo "<td class='td-center'>";
-                                echo '<button class="action-btn btn-print" title="พิมพ์" onclick="printItem('.$row['id'].')"><i class="fa-solid fa-print"></i></button>';
-                                echo "</td>";
-
-                                // รวม
-                                echo "<td class='td-center total-text'>ถึงนี้</td>";
-                                echo "</tr>";
-                            }
-                        } else {
-                            echo "<tr><td colspan='10' class='text-center py-4 text-muted'>ยังไม่มีข้อมูลรายการในปี " . $active_year . "</td></tr>";
-                        }
-                        ?>
+                        <tr><th style="width: 35%; background-color: #f8f9fa;">ที่ใบงวด</th><td id="view_allocation_order"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">วันที่เอกสาร</th><td id="view_doc_date"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">ที่เอกสาร</th><td id="view_doc_no"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">อ้างถึงหนังสือจัดสรร</th><td id="view_ref_alloc_doc"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">แผนงาน</th><td id="view_plan_type"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">ผลผลิต/โครงการ</th><td id="view_project_type"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">กิจกรรมหลัก</th><td id="view_main_activity"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">กิจกรรมหลักเพิ่มเติม</th><td id="view_sub_activity"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">แหล่งของเงิน</th><td id="view_fund_source"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">รหัสทางบัญชี</th><td id="view_account_code"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">งบรายจ่าย</th><td id="view_expense_budget"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">รายการ</th><td id="view_description"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">รายละเอียดเพิ่มเติม</th><td id="view_detail_desc"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">จำนวนเงิน</th><td id="view_amount" class="text-danger fw-bold fs-6"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">ผู้บันทึกข้อมูล</th><td id="view_recorded_by"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">ไฟล์แนบ</th><td id="view_file"></td></tr>
                     </tbody>
                 </table>
             </div>
-
-        </div>
-    </div>
-
-    <div class="modal fade" id="addModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <form action="Budgetallocation.php" method="POST" enctype="multipart/form-data">
-                    <input type="hidden" name="action" id="form_action" value="add">
-                    <input type="hidden" name="edit_id" id="edit_id">
-                    
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="modalTitle"><i class="fa-solid fa-file-invoice-dollar"></i> เพิ่มรายการจัดสรร</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">งวดที่</label>
-                            <input type="number" name="allocation_order" id="allocation_order" class="form-control" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">วันที่เอกสาร</label>
-                            <input type="date" name="doc_date" id="doc_date" class="form-control" value="<?php echo date('Y-m-d'); ?>" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">รายการ</label>
-                            <input type="text" name="description" id="description" class="form-control" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">จำนวนเงิน</label>
-                            <input type="number" step="0.01" name="amount" id="amount" class="form-control" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">แนบไฟล์ (PDF/รูปภาพ)</label>
-                            <input type="file" name="file_upload" class="form-control">
-                            <small class="text-muted">* อัปโหลดไฟล์เพื่อบันทึก</small>
-                        </div>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-                        <button type="submit" class="btn btn-primary">บันทึกข้อมูล</button>
-                    </div>
-                </form>
+            <div class="modal-footer border-0 pb-3">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิดหน้าต่าง</button>
             </div>
         </div>
     </div>
+</div>
 
-    <div class="modal fade" id="detailModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="fa-solid fa-circle-info"></i> รายละเอียด</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body text-center">
-                    <h5 id="detail_desc" class="fw-bold mb-3 text-primary"></h5>
-                    <div id="file_download_area"></div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ปิด</button>
-                </div>
-            </div>
-        </div>
-    </div>
+<?php require_once 'includes/footer.php'; ?>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        function openEditModal(data) {
-            document.getElementById('form_action').value = 'edit';
-            document.getElementById('edit_id').value = data.id;
-            document.getElementById('modalTitle').innerHTML = '<i class="fa-solid fa-pen-to-square"></i> แก้ไขรายการ / แนบไฟล์';
-            
-            document.getElementById('allocation_order').value = data.allocation_order;
-            document.getElementById('doc_date').value = data.doc_date;
-            document.getElementById('description').value = data.description;
-            document.getElementById('amount').value = data.amount;
-            
-            var myModal = new bootstrap.Modal(document.getElementById('addModal'));
-            myModal.show();
+<script>
+    const userRole = '<?php echo $_SESSION['role']; ?>';
+
+    function checkAdminAction(action, data = null) {
+        if (action === 'add') {
+            openAddModal();
+        } else {
+            openEditModal(data);
         }
+    }
 
-        document.getElementById('addModal').addEventListener('hidden.bs.modal', function () {
-            document.getElementById('form_action').value = 'add';
-            document.getElementById('edit_id').value = '';
-            document.getElementById('modalTitle').innerHTML = '<i class="fa-solid fa-file-invoice-dollar"></i> เพิ่มรายการจัดสรร';
-            document.querySelector('form').reset();
-        });
-
-        function openDetailModal(data) {
-            document.getElementById('detail_desc').innerText = data.description;
-            var fileArea = document.getElementById('file_download_area');
-            if (data.file_name) {
-                fileArea.innerHTML = `
-                    <div class="p-3 border rounded bg-light">
-                        <p class="mb-2">พบไฟล์แนบ: <strong>${data.file_name}</strong></p>
-                        <a href="uploads/${data.file_name}" target="_blank" class="btn btn-success btn-sm">
-                            <i class="fa-solid fa-download"></i> ดาวน์โหลดไฟล์
-                        </a>
-                    </div>`;
-            } else {
-                fileArea.innerHTML = `<div class="alert alert-secondary mb-0"><i class="fa-solid fa-file-circle-xmark"></i> ไม่พบไฟล์แนบ</div>`;
-            }
-            var myModal = new bootstrap.Modal(document.getElementById('detailModal'));
-            myModal.show();
+    function checkAdminDelete(id) {
+        if (confirm('คุณต้องการลบรายการนี้หรือไม่? (ไฟล์แนบจะถูกลบไปด้วย)')) {
+            window.location.href = `?delete_id=${id}`;
         }
+    }
 
-        function printItem(id) {
-            window.print();
+    function openAddModal() {
+        document.getElementById('form_action').value = 'add';
+        document.getElementById('edit_id').value = '';
+        document.getElementById('modalTitle').innerHTML = 'เพิ่มรายการจัดสรรงบประมาณ';
+        document.querySelector('#addModal form').reset();
+        
+        // กำหนดค่าที่ใบงวดอัตโนมัติสำหรับฟอร์มใหม่
+        document.getElementById('allocation_order').value = '<?php echo $next_allocation_order; ?>';
+        document.getElementById('doc_date').value = '<?php echo date('Y-m-d'); ?>';
+        
+        new bootstrap.Modal(document.getElementById('addModal')).show();
+    }
+
+    function openEditModal(data) {
+        document.getElementById('form_action').value = 'edit';
+        document.getElementById('edit_id').value = data.id;
+        document.getElementById('modalTitle').innerHTML = 'แก้ไขรายการจัดสรร / แนบไฟล์เพิ่มเติม';
+        
+        document.getElementById('allocation_order').value = data.allocation_order || '';
+        document.getElementById('doc_no').value = data.doc_no || '';
+        document.getElementById('doc_date').value = data.doc_date || '';
+        document.getElementById('ref_alloc_doc').value = data.ref_alloc_doc || '';
+        document.getElementById('plan_type').value = data.plan_type || '';
+        document.getElementById('project_type').value = data.project_type || '';
+        document.getElementById('main_activity').value = data.main_activity || '';
+        document.getElementById('sub_activity').value = data.sub_activity || '';
+        document.getElementById('fund_source').value = data.fund_source || '';
+        document.getElementById('account_code').value = data.account_code || '';
+        document.getElementById('expense_budget').value = data.expense_budget || '';
+        document.getElementById('description').value = data.description || '';
+        document.getElementById('detail_desc').value = data.detail_desc || '';
+        document.getElementById('amount').value = data.amount || '';
+        
+        new bootstrap.Modal(document.getElementById('addModal')).show();
+    }
+
+    function openDetailModal(data) {
+        document.getElementById('view_allocation_order').innerText = data.allocation_order || '-';
+        document.getElementById('view_doc_no').innerText = data.doc_no || '-';
+        document.getElementById('view_doc_date').innerText = data.doc_date || '-';
+        document.getElementById('view_ref_alloc_doc').innerText = data.ref_alloc_doc || '-';
+        document.getElementById('view_plan_type').innerText = data.plan_type || '-';
+        document.getElementById('view_project_type').innerText = data.project_type || '-';
+        document.getElementById('view_main_activity').innerText = data.main_activity || '-';
+        document.getElementById('view_sub_activity').innerText = data.sub_activity || '-';
+        document.getElementById('view_fund_source').innerText = data.fund_source || '-';
+        document.getElementById('view_account_code').innerText = data.account_code || '-';
+        document.getElementById('view_expense_budget').innerText = data.expense_budget || '-';
+        document.getElementById('view_description').innerText = data.description || '-';
+        document.getElementById('view_detail_desc').innerText = data.detail_desc || '-';
+        document.getElementById('view_recorded_by').innerText = data.recorded_by || 'ไม่มีข้อมูลผู้บันทึก';
+        document.getElementById('view_amount').innerText = parseFloat(data.amount || 0).toLocaleString('th-TH', {minimumFractionDigits: 2}) + ' บาท';
+        
+        var fileArea = document.getElementById('view_file');
+        if (data.file_name) {
+            fileArea.innerHTML = `<a href="uploads/${data.file_name}" target="_blank" class="btn btn-success btn-sm py-0"><i class="fa-solid fa-download"></i> ดาวน์โหลดไฟล์แนบ</a>`;
+        } else {
+            fileArea.innerHTML = `<span class="text-muted"><i class="fa-solid fa-file-circle-xmark"></i> ไม่มีไฟล์แนบ</span>`;
         }
-    </script>
+        new bootstrap.Modal(document.getElementById('detailModal')).show();
+    }
 
-</body>
-</html>
-
-<?php $conn->close(); ?>
+    function printItem(id) {
+        window.print();
+    }
+</script>

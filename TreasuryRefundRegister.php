@@ -1,37 +1,30 @@
 <?php
-session_start(); // 1. เริ่มต้น Session
+// [1. เรียกใช้ DB]
+require_once 'includes/db.php'; 
 
-// 2. ตรวจสอบว่าได้ Login หรือยัง
-if (!isset($_SESSION['user_id'])) {
-    header("Location: Login.php");
-    exit();
+$page_title = "ทะเบียนคืนเงินคงคลัง - AMSS++";
+$current_page = basename($_SERVER['PHP_SELF']); 
+$page_header = 'ทะเบียนคืนเงินคงคลัง';
+
+// --- ตรวจสอบและสร้างคอลัมน์ใหม่ให้ฐานข้อมูลอัตโนมัติ (รองรับฟอร์มใหม่ตามรูป) ---
+$columns_to_add = [
+    'period_no' => "VARCHAR(100) NULL AFTER doc_no",
+    'plan_name' => "VARCHAR(255) NULL AFTER period_no",
+    'project_name' => "VARCHAR(255) NULL AFTER plan_name",
+    'activity_name' => "VARCHAR(255) NULL AFTER project_name",
+    'expense_type' => "VARCHAR(255) NULL AFTER activity_name"
+];
+
+foreach ($columns_to_add as $col_name => $col_definition) {
+    $check_col = $conn->query("SHOW COLUMNS FROM treasury_refunds LIKE '$col_name'");
+    if ($check_col && $check_col->num_rows == 0) {
+        $conn->query("ALTER TABLE treasury_refunds ADD $col_name $col_definition");
+    }
 }
 
-// --- เชื่อมต่อฐานข้อมูล ---
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "system_budget";
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-$conn->set_charset("utf8");
-
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
-
-// --- [ส่วนที่เพิ่มใหม่] ดึงปีงบประมาณที่ทำงานอยู่ (Active Year) ---
-$active_year = date("Y") + 543; // ค่าเริ่มต้น
-$sql_check_active = "SELECT budget_year FROM fiscal_years WHERE is_active = 1 LIMIT 1";
-$result_check_active = $conn->query($sql_check_active);
-
-if ($result_check_active->num_rows > 0) {
-    $row_active = $result_check_active->fetch_assoc();
-    $active_year = $row_active['budget_year'];
-}
-// -------------------------------------------------------------
-
+// --------------------------------------------------------------------------------
 // --- Logic จัดการข้อมูล (CRUD) ---
+// --------------------------------------------------------------------------------
 
 // 1. ลบข้อมูล
 if (isset($_GET['delete_id'])) {
@@ -45,452 +38,359 @@ if (isset($_GET['delete_id'])) {
 
 // 2. เพิ่ม หรือ แก้ไขข้อมูล
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    // รับค่าจากฟอร์ม
-    $refund_order = $_POST['refund_order'];
-    $doc_date = $_POST['doc_date'];
-    $doc_no = $_POST['doc_no'];
-    $description = $_POST['description'];
-    $amount = $_POST['amount'];
+    $refund_order = $_POST['refund_order'] ?? 0;
+    $refund_date = $_POST['doc_date'] ?? date('Y-m-d'); 
+    $doc_no = $_POST['doc_no'] ?? '';
+    $period_no = $_POST['period_no'] ?? '';
+    $plan_name = $_POST['plan_name'] ?? '';
+    $project_name = $_POST['project_name'] ?? '';
+    $activity_name = $_POST['activity_name'] ?? '';
+    $expense_type = $_POST['expense_type'] ?? '';
+    $description = $_POST['description'] ?? '';
+    $amount = $_POST['amount'] ?? 0;
 
     if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        // [แก้ไข] เพิ่ม budget_year ลงในคำสั่ง INSERT
-        $stmt = $conn->prepare("INSERT INTO treasury_refunds (budget_year, refund_order, doc_date, doc_no, description, amount) VALUES (?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("iisssd", $active_year, $refund_order, $doc_date, $doc_no, $description, $amount);
+        $stmt = $conn->prepare("INSERT INTO treasury_refunds (budget_year, refund_order, refund_date, doc_no, period_no, plan_name, project_name, activity_name, expense_type, description, amount, ref_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'manual')");
+        $stmt->bind_param("iissssssssd", $active_year, $refund_order, $refund_date, $doc_no, $period_no, $plan_name, $project_name, $activity_name, $expense_type, $description, $amount);
         $stmt->execute();
+        
+        // ถ้ามีการติ๊ก Checkbox ให้ไปลงทะเบียนรับเงินงบประมาณ (จำลอง logic ตามรูปภาพ)
+        if(isset($_POST['save_to_receive']) && $_POST['save_to_receive'] == '1') {
+            $check_tbl = $conn->query("SHOW TABLES LIKE 'receive_budget'");
+            if($check_tbl->num_rows > 0) {
+                $sql_rec_max = "SELECT MAX(receive_order) as m_order FROM receive_budget WHERE budget_year = ?";
+                $st_rm = $conn->prepare($sql_rec_max);
+                $st_rm->bind_param("i", $active_year);
+                $st_rm->execute();
+                $rr = $st_rm->get_result()->fetch_assoc();
+                $rec_order = ($rr['m_order'] ?? 0) + 1;
+                $t_type = "รับเงินสด"; 
+                $desc_receive = "รับคืนเงินคงคลัง: " . $description; 
+
+                $ins_rec = $conn->prepare("INSERT INTO receive_budget (budget_year, receive_order, doc_date, doc_no, description, transaction_type, amount) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                if($ins_rec) {
+                    $ins_rec->bind_param("iissssd", $active_year, $rec_order, $refund_date, $doc_no, $desc_receive, $t_type, $amount);
+                    $ins_rec->execute();
+                }
+            }
+        }
+        
     } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
         $id = $_POST['edit_id'];
-        $stmt = $conn->prepare("UPDATE treasury_refunds SET refund_order=?, doc_date=?, doc_no=?, description=?, amount=? WHERE id=?");
-        $stmt->bind_param("isssdi", $refund_order, $doc_date, $doc_no, $description, $amount, $id);
+        $stmt = $conn->prepare("UPDATE treasury_refunds SET refund_order=?, refund_date=?, doc_no=?, period_no=?, plan_name=?, project_name=?, activity_name=?, expense_type=?, description=?, amount=? WHERE id=?");
+        $stmt->bind_param("issssssssdi", $refund_order, $refund_date, $doc_no, $period_no, $plan_name, $project_name, $activity_name, $expense_type, $description, $amount, $id);
         $stmt->execute();
     }
     header("Location: TreasuryRefundRegister.php");
     exit();
 }
 
-// --- [แก้ไข] ดึงข้อมูลเฉพาะปี Active ---
-$sql_data = "SELECT * FROM treasury_refunds WHERE budget_year = ? ORDER BY refund_order ASC";
+// --- ดึงข้อมูล (สำคัญ: คอลัมน์ต้องตรงกับ SQL ด้านบน) ---
+$sql_data = "SELECT * FROM treasury_refunds WHERE budget_year = ? ORDER BY refund_date ASC, id ASC";
 $stmt_data = $conn->prepare($sql_data);
 $stmt_data->bind_param("i", $active_year);
 $stmt_data->execute();
 $result_data = $stmt_data->get_result();
 
-// ตัวแปรยอดรวม
+// --- เตรียมเลขลำดับถัดไป
+$sql_next = "SELECT MAX(refund_order) as max_order FROM treasury_refunds WHERE budget_year = ?";
+$stmt_next = $conn->prepare($sql_next);
+$stmt_next->bind_param("i", $active_year);
+$stmt_next->execute();
+$res_next = $stmt_next->get_result();
+$row_next = $res_next->fetch_assoc();
+$next_refund_order = ($row_next['max_order'] ? $row_next['max_order'] : 0) + 1;
+
 $total_amount = 0;
 
-// ฟังก์ชันวันที่ไทยย่อ
-function thai_date_short($date_str) {
-    if(!$date_str || $date_str == '0000-00-00') return "";
-    $timestamp = strtotime($date_str);
-    $thai_month_arr = array("0"=>"","1"=>"ม.ค.","2"=>"ก.พ.","3"=>"มี.ค.","4"=>"เม.ย.","5"=>"พ.ค.","6"=>"มิ.ย.","7"=>"ก.ค.","8"=>"ส.ค.","9"=>"ก.ย.","10"=>"ต.ค.","11"=>"พ.ย.","12"=>"ธ.ค.");
-    $d = str_pad(date("j", $timestamp), 2, '0', STR_PAD_LEFT); 
-    $m = date("n", $timestamp);
-    $y = date("Y", $timestamp) + 543; 
-    return "$d{$thai_month_arr[$m]}$y"; 
-}
-
-function thai_date_full($timestamp) {
-    $thai_day_arr = array("อาทิตย์","จันทร์","อังคาร","พุธ","พฤหัสบดี","ศุกร์","เสาร์");
-    $thai_month_arr = array("0"=>"","1"=>"มกราคม","2"=>"กุมภาพันธ์","3"=>"มีนาคม","4"=>"เมษายน","5"=>"พฤษภาคม","6"=>"มิถุนายน","7"=>"กรกฎาคม","8"=>"สิงหาคม","9"=>"กันยายน","10"=>"ตุลาคม","11"=>"พฤศจิกายน","12"=>"ธันวาคม");
-    $d = date("j", $timestamp);
-    $m = date("n", $timestamp);
-    $y = date("Y", $timestamp) + 543;
-    return "วัน" . $thai_day_arr[date("w", $timestamp)] . "ที่ $d $thai_month_arr[$m] พ.ศ. $y";
-}
-
-// *** เช็คหน้าปัจจุบัน ***
-$current_page = basename($_SERVER['PHP_SELF']);
+require_once 'includes/header.php';
+require_once 'includes/navbar.php';
 ?>
 
-<!DOCTYPE html>
-<html lang="th">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ทะเบียนคืนเงินคงคลัง - AMSS++</title>
+<style>
+    /* ปุ่มเพิ่มข้อมูลสีน้ำเงินเข้ม */
+    .btn-add {
+        background-color: #0b1526 !important; 
+        color: white !important;
+        border-radius: 8px;
+        padding: 8px 25px;
+        font-weight: 500;
+        border: none;
+        transition: 0.3s;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .btn-add:hover { background-color: #1a2a44 !important; transform: translateY(-1px); }
+
+    .total-row { background-color: #fff3cd !important; font-weight: bold; color: #181818; }
+
+    /* พื้นหลัง Modal ขาวสะอาด */
+    .form-white-bg { 
+        background-color: #ffffff; 
+        padding: 25px 40px; 
+        border-radius: 8px; 
+        border: 1px solid #dee2e6; 
+    }
     
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;700&display=swap" rel="stylesheet">
+    .form-label-custom { font-weight: bold; text-align: right; font-size: 0.95rem; color: #333; padding-top: 6px; }
+    .modal-header { border-bottom: 1px solid #dee2e6; background-color: #ffffff; border-top-left-radius: 12px; border-top-right-radius: 12px; }
+    .modal-title-custom { color: #006666; font-weight: bold; width: 100%; text-align: center; font-size: 1.2rem;}
+    .modal-content { border-radius: 12px; border: none; box-shadow: 0 10px 30px rgba(0,0,0,0.15); }
+    
+    /* สไตล์ปุ่มเทาในฟอร์ม */
+    .btn-form { padding: 6px 25px; background-color: #6c757d; border: none; color: #fff; border-radius: 4px; font-size: 0.95rem; }
+    .btn-form:hover { background-color: #5c636a; color: #fff; }
+    .btn-form-light { padding: 6px 25px; background-color: #f8f9fa; border: 1px solid #ced4da; color: #333; border-radius: 4px; font-size: 0.95rem; }
+    .btn-form-light:hover { background-color: #e2e6ea; }
+</style>
 
-    <style>
-        :root {
-            --primary-dark: #0A192F;
-            --accent-yellow: #FFC107;
-            --accent-gold: #c59d0a;
-            --bg-light: #f4f7f6;
-            --menu-bg: #212529;
-            --header-gold: #8B8000; /* สีทองเข้ม */
-        }
-        body {
-            font-family: 'Sarabun', sans-serif;
-            background-color: var(--bg-light);
-            color: #333;
-        }
-        
-        .top-header { background-color: var(--primary-dark); color: white; padding: 10px 20px; }
-        
-        /* User Info & Logout Button Styles */
-        .user-info { font-size: 0.9rem; text-align: right; }
-        .user-role { color: var(--accent-yellow); font-weight: 700; text-transform: uppercase; }
-        .btn-logout {
-            color: #ff6b6b;
-            text-decoration: none;
-            margin-left: 10px;
-            font-size: 0.85rem;
-            border: 1px solid #ff6b6b;
-            padding: 2px 8px;
-            border-radius: 4px;
-            transition: all 0.2s;
-        }
-        .btn-logout:hover { background-color: #ff6b6b; color: white; }
+<div class="container-fluid pb-5 px-3">
+    <div class="content-card">
+        <h2 class="page-title">ทะเบียนคืนเงินคงคลัง ปีงบประมาณ <?php echo $active_year; ?></h2>
 
-        .sub-header { background: linear-gradient(90deg, var(--accent-yellow) 0%, var(--accent-gold) 100%); padding: 8px 20px; font-weight: 700; color: var(--primary-dark); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .navbar-custom { background-color: var(--menu-bg); padding: 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        
-        /* CSS Active Menu Logic */
-        .nav-link-custom { color: #aaa; padding: 12px 20px; text-decoration: none; display: inline-block; transition: all 0.3s; border-bottom: 3px solid transparent; font-size: 0.95rem; }
-        .nav-link-custom:hover, .nav-link-custom.active { 
-            color: #fff; 
-            background-color: #333; 
-            border-bottom-color: var(--accent-yellow); 
-        }
-        
-        .dropdown-menu { border-radius: 0; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
-        .dropdown-item:hover { background-color: var(--bg-light); color: var(--primary-dark); }
-        
-        /* Dropdown Active Style (Black & Bold) */
-        .dropdown-item.active, .dropdown-item:active {
-            background-color: white; 
-            color: black !important;
-            font-weight: bold !important;
-        }
-
-        .content-card { background: white; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.05); padding: 30px; margin-top: 30px; border-top: 5px solid var(--accent-yellow); }
-        
-        /* Title Color */
-        .page-title { color: #d63384; font-weight: 700; text-align: center; margin-bottom: 25px; font-size: 1.4rem; }
-        
-        /* --- Table Styles (Dark Gold / White) --- */
-        .table-custom th { 
-            background-color: var(--header-gold); 
-            color: white; 
-            font-weight: 500; 
-            text-align: center; 
-            vertical-align: middle; 
-            border: 1px solid rgba(255,255,255,0.2); 
-            font-size: 0.85rem; 
-            padding: 8px 4px;
-        }
-        .table-custom td { 
-            vertical-align: middle; 
-            border-bottom: 1px solid #f0f0f0; 
-            padding: 6px 4px; 
-            font-size: 0.85rem; 
-            background-color: white !important; 
-        }
-        
-        .table-striped > tbody > tr:nth-of-type(odd) > * { --bs-table-accent-bg: transparent; }
-        
-        /* Footer Row Style */
-        .total-row td {
-            font-weight: bold;
-            color: #333;
-            border-top: 2px solid #ddd;
-            background-color: #f8f9fa !important;
-        }
-        
-        .td-center { text-align: center; }
-        .td-right { text-align: right; }
-        .td-left { text-align: left; }
-
-        .btn-add { background-color: #efefef; color: #333; border: 1px solid #ccc; padding: 4px 15px; font-weight: 600; box-shadow: 0 2px 2px rgba(0,0,0,0.1); transition: 0.2s; text-decoration: none; display: inline-block; border-radius: 4px; border: none; cursor: pointer; font-size: 0.9rem; }
-        .btn-add:hover { background-color: #e0e0e0; color: #000; }
-        
-        .action-btn { border: none; background: none; cursor: pointer; transition: 0.2s; font-size: 1rem; padding: 0; }
-        .btn-edit { color: #0d6efd; font-size: 1.1rem; }
-        .btn-delete { color: #dc3545; font-size: 1.1rem; }
-        .action-btn:hover { transform: scale(1.2); }
-
-        /* Modal Styles */
-        .form-yellow-bg { background-color: #fff9c4; padding: 20px; border-radius: 5px; border: 1px solid #eee; }
-        .form-label-custom { font-weight: bold; text-align: right; font-size: 0.9rem; }
-        .modal-header { background-color: transparent; border-bottom: none; }
-        .modal-title-custom { color: #008080; font-weight: bold; width: 100%; text-align: center; font-size: 1.3rem;}
-        
-        .total-text { color: #000; font-weight: bold; font-size: 0.8rem;}
-    </style>
-</head>
-<body>
-
-    <div class="top-header d-flex justify-content-between align-items-center">
-        <div><strong>Budget control system</strong> สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</div>
-        
-        <div class="user-info">
-            <div>
-                ผู้ใช้ : <?php echo htmlspecialchars($_SESSION['fullname']); ?> 
-                (<span class="user-role">**<?php echo $_SESSION['role']; ?>**</span>)
-                <a href="Logout.php" class="btn-logout" onclick="return confirm('ยืนยันออกจากระบบ?');">
-                    <i class="fa-solid fa-power-off"></i> ออก
-                </a>
-            </div>
-            <small class="text-white-50"><?php echo thai_date_full(time()); ?></small>
-        </div>
+        <div class="d-flex justify-content-end mb-3">
+            <button class="btn btn-add" onclick="openAddModal()">
+                <i class="fa-solid fa-plus me-1"></i> เพิ่มข้อมูล
+            </button>
         </div>
 
-    <div class="sub-header">ทะเบียนคืนเงินคงคลัง</div>
+        <div class="table-responsive">
+            <table class="table table-hover table-custom">
+                <thead>
+                    <tr>
+                        <th style="width: 5%;">ที่</th>
+                        <th style="width: 10%;">วดป</th>
+                        <th style="width: 15%;">เลขที่เอกสาร</th>
+                        <th style="width: 40%;">รายการ</th>
+                        <th style="width: 15%;">จำนวนเงิน</th>
+                        <th style="width: 15%;">จัดการ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php 
+                    $count = 1;
+                    if ($result_data->num_rows > 0) {
+                        while($row = $result_data->fetch_assoc()) {
+                            $total_amount += $row['amount'];
+                            $is_from_project = ($row['ref_type'] == 'project');
 
-    <div class="navbar-custom">
-        <div class="container-fluid d-flex flex-wrap">
-            <a href="index.php" class="nav-link-custom">รายการหลัก</a>
-            
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="officers.php">เจ้าหน้าที่การเงินฯ</a></li>
-                    <li><a class="dropdown-item" href="yearbudget.php">ปีงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="plan.php">แผนงาน</a></li>
-                    <li><a class="dropdown-item" href="Projectoutcomes.php">ผลผลิตโครงการ</a></li>
-                    <li><a class="dropdown-item" href="Activity.php">กิจกรรมหลัก</a></li>
-                    <li><a class="dropdown-item" href="Sourcemoney.php">แหล่งของเงิน</a></li>
-                    <li><a class="dropdown-item" href="Expensesbudget.php">งบรายจ่าย</a></li>
-                    <li><a class="dropdown-item" href="Mainmoney.php">ประเภท(หลัก)ของเงิน</a></li>
-                    <li><a class="dropdown-item" href="Subtypesmoney.php">ประเภท(ย่อย)ของเงิน</a></li>
-                </ul>
-            </div>
-            
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนรับ</a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="Budgetallocation.php">รับการจัดสรรงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Receivebudget.php">รับเงินงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Receiveoffbudget.php">รับเงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Receivenational.php">รับเงินรายได้แผ่นดิน</a></li>
-                </ul>
-            </div>
-
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom active dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนขอเบิก</a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="RequestforWithdrawalProjectLoan.php">ทะเบียนขอเบิก/ขอยืมเงินโครงการ</a></li>
-                    <li><a class="dropdown-item" href="ProjectRefundRegistration.php">***ทะเบียนคืนเงินโครงการ</a></li>
-                    <li><a class="dropdown-item" href="TreasuryWithdrawal.php">ทะเบียนขอเบิกเงินคงคลัง</a></li>
-                    
-                    <li><a class="dropdown-item <?php echo ($current_page == 'TreasuryRefundRegister.php') ? 'active' : ''; ?>" href="TreasuryRefundRegister.php">***ทะเบียนคืนเงินคงคลัง</a></li>
-                    
-                    <li><a class="dropdown-item" href="Withdrawtheappeal.php">***ยกเลิกฎีกา</a></li>
-                    <li><a class="dropdown-item" href="Fundrolloverregister.php">ทะเบียนเงินกันเหลื่อมปี</a></li>
-                </ul>
-            </div>
-
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ทะเบียนจ่าย</a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="Authorizebudgetexpenditures.php">สั่งจ่ายเงินงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Orderpaymentoutsidethebudget.php">สั่งจ่ายเงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Orderpaymentofstaterevenue.php">สั่งจ่ายเงินรายได้แผ่นดิน</a></li>
-                    <li><a class="dropdown-item" href="Governmentadvancefunds.php">เงินทดรองราชการ</a></li>
-                    <li><a class="dropdown-item" href="Approvedformaintypepayment.php">อนุมัติจ่ายเงินประเภทหลัก</a></li>
-                    <li><a class="dropdown-item" href="Approved for governmentadvancepayment.php">อนุมัติจ่ายเงินทดรองราชการ</a></li>
-                    <li><a class="dropdown-item" href="Major type of payment.php">จ่ายเงินประเภทหลัก</a></li>
-                    <li><a class="dropdown-item" href="Advance payment for government service.php">จ่ายเงินทดรองราชการ</a></li>
-                </ul>
-            </div>
-
-             <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">เปลี่ยนแปลงสถานะ</a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="Budget.php">เงินงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Off-budget funds.php">เงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="National income.php">เงินรายได้แผ่นดิน</a></li>
-                </ul>
-            </div>
-            
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">ตรวจสอบ</a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="Check budget allocation.php">ตรวจสอบการจัดสรรงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Check the periodic financial report.php">รายงานเงินประจำงวด</a></li>
-                    <li><a class="dropdown-item" href="Check main payment type.php">จ่ายเงินประเภทหลัก</a></li>
-                    <li><a class="dropdown-item" href="Check the government advance payment.php">จ่ายเงินทดรองราชการ</a></li>
-                    <li><a class="dropdown-item" href="The appeal number does not exist in the system.php">เลขที่ฎีกาที่ไม่มีในระบบ</a></li>
-                    <li><a class="dropdown-item" href="Appeals regarding project termination classified by invoice.php">ฎีกากับการตัดโครงการจำแนกตามใบงวด</a></li>
-                    <li><a class="dropdown-item" href="Supreme Court Rulings and References for Reimbursement Requests Classified by Ruling.php">ฎีกากับการอ้างอิงการขอเบิกจำแนกตามฎีกา</a></li>
-                    <li><a class="dropdown-item" href="Withdrawal requests that have not yet been submitted for approval.php">รายการขอเบิกฯที่ยังไม่ได้วางฎีกา</a></li>
-                    <li><a class="dropdown-item" href="Requisition items with incorrect installment vouchers.php">รายการขอเบิกฯที่วางฎีกาผิดใบงวด</a></li>
-                </ul>
-            </div>
-
-            <div class="dropdown">
-                <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">รายงาน</a>
-                <ul class="dropdown-menu">
-                    <li><a class="dropdown-item" href="Budget allocation report.php">รายงานการจัดสรรงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Expenditure report categorized by project.php">รายงานการใช้จ่ายจำแนกตามโครงการ</a></li>
-                    <li><a class="dropdown-item" href="Annuity register.php">ทะเบียนเงินงวด</a></li>
-                    <li><a class="dropdown-item" href="Expenditure report categorized by budget code.php">รายงานการใช้จ่ายจำแนกตามรหัสงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Expenditure report categorized by type of.php">รายงานการใช้จ่ายจำแนกตามประเภทรายการจ่าย</a></li>
-                    <li><a class="dropdown-item" href="Daily cash balance report.php">รายงานเงินคงเหลือประจำวัน</a></li>
-                    <li><a class="dropdown-item" href="cash book.php">สมุดเงินสด</a></li>
-                    <li><a class="dropdown-item" href="budget report.php">รายงานเงินงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="Report money outside the budget.php">รายงานเงินนอกงบประมาณ</a></li>
-                    <li><a class="dropdown-item" href="State income report.php">รายงานเงินรายได้แผ่นดิน</a></li>
-                    <li><a class="dropdown-item" href="Loan Report.php">รายงานลูกหนี้เงินยืม</a></li>
-                </ul>
-            </div>
-
-            <a href="#" class="nav-link-custom ms-auto">คู่มือ</a>
-        </div>
-    </div>
-
-    <div class="container-fluid pb-5 px-3">
-        <div class="content-card">
-            
-            <h2 class="page-title">ทะเบียนคืนเงินคงคลัง ปีงบประมาณ <?php echo $active_year; ?></h2>
-
-            <div class="d-flex align-items-center mb-2">
-                <button class="btn btn-add" onclick="openAddModal()">
-                    ลงทะเบียน
-                </button>
-            </div>
-
-            <div class="table-responsive">
-                <table class="table table-striped table-custom">
-                    <thead>
-                        <tr>
-                            <th style="width: 5%;">ที่</th>
-                            <th style="width: 10%;">ว/ด/ป</th>
-                            <th style="width: 15%;">เลขที่เอกสาร</th>
-                            <th style="width: 40%;">รายการ</th>
-                            <th style="width: 15%;">จำนวนเงิน</th>
-                            <th style="width: 15%;">จัดการ</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php 
-                        // ตรวจสอบว่ามีข้อมูลหรือไม่ (ถ้าไม่มีตาราง treasury_refunds จะ Error ตรงนี้)
-                        if ($result_data && $result_data->num_rows > 0) {
-                            while($row = $result_data->fetch_assoc()) {
-                                $total_amount += $row['amount'];
-                                
-                                echo "<tr>";
-                                echo "<td class='td-center'>" . $row['refund_order'] . "</td>";
-                                echo "<td class='td-center'>" . thai_date_short($row['doc_date']) . "</td>";
-                                echo "<td class='td-left'>" . $row['doc_no'] . "</td>";
-                                echo "<td class='td-left'>" . $row['description'] . "</td>";
-                                echo "<td class='td-right'>" . number_format($row['amount'], 2) . "</td>";
-                                
-                                // ปุ่มจัดการ
-                                echo "<td class='td-center'>";
-                                echo '<a href="?delete_id='.$row['id'].'" class="action-btn btn-delete" onclick="return confirm(\'คุณต้องการลบรายการนี้หรือไม่?\')"><i class="fa-solid fa-trash-can"></i></a>';
-                                echo '<button class="action-btn btn-edit" onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')"><i class="fa-solid fa-pen-to-square"></i></button>';
-                                echo "</td>";
-
-                                echo "</tr>";
-                            }
+                            echo "<tr>";
+                            echo "<td class='td-center'>" . $row['refund_order'] . "</td>";
+                            echo "<td class='td-center'>" . thai_date_short($row['refund_date']) . "</td>";
+                            echo "<td>" . htmlspecialchars($row['doc_no']) . "</td>";
+                            echo "<td>" . htmlspecialchars($row['description']);
+                            if($is_from_project) echo ' <span class="badge bg-info ms-2" style="font-size: 0.7rem;">คืนจากโครงการ</span>';
+                            echo "</td>";
+                            echo "<td class='td-right'>" . number_format($row['amount'], 2) . "</td>";
                             
-                            // Row รวมยอดสุดท้าย
-                            echo "<tr class='total-row'>";
-                            echo "<td colspan='4' class='text-center'>รวม</td>";
-                            echo "<td class='td-right'>" . number_format($total_amount, 2) . "</td>";
-                            echo "<td></td>";
+                            echo "<td class='td-center text-nowrap'>";
+                            echo '<button class="action-btn text-info" title="รายละเอียด" onclick=\'openDetailModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')\'><i class="fa-regular fa-rectangle-list"></i></button>';
+                            if($is_from_project) {
+                                echo '<span class="text-muted small ms-2">จัดการที่หน้าโครงการ</span>';
+                            } else {
+                                echo '<button class="action-btn btn-edit" title="แก้ไข" onclick=\'openEditModal('.json_encode($row).')\'><i class="fa-solid fa-pen-to-square"></i></button>';
+                                echo '<a href="?delete_id='.$row['id'].'" class="action-btn btn-delete" onclick="return confirm(\'ยืนยันการลบ?\')" title="ลบ"><i class="fa-solid fa-trash-can"></i></a>';
+                            }
+                            echo "</td>";
                             echo "</tr>";
-
-                        } else {
-                            echo "<tr><td colspan='6' class='text-center py-4 text-muted'>ยังไม่มีข้อมูลในปี $active_year</td></tr>";
                         }
-                        ?>
-                    </tbody>
-                </table>
-            </div>
-
+                        echo "<tr class='total-row'><td colspan='4' class='text-center'>รวมยอดคืนเงินคงคลังทั้งสิ้น</td><td class='td-right'>" . number_format($total_amount, 2) . "</td><td></td></tr>";
+                    } else {
+                        echo "<tr><td colspan='6' class='text-center py-5 text-muted'>ยังไม่มีข้อมูลในปีงบประมาณ $active_year</td></tr>";
+                    }
+                    ?>
+                </tbody>
+            </table>
         </div>
     </div>
+</div>
 
-    <div class="modal fade" id="addModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header d-block">
-                    <h5 class="modal-title-custom" id="modalTitle">ลงทะเบียน คืนเงินคงคลัง ปีงบประมาณ <?php echo $active_year; ?></h5>
-                </div>
-                <div class="modal-body form-yellow-bg mx-3 mb-3">
+<div class="modal fade" id="addModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header d-block pb-2 border-0">
+                <h5 class="modal-title-custom text-teal" id="modalTitle">คืนเงินคงคลัง ปีงบประมาณ <?php echo $active_year; ?></h5>
+            </div>
+            <div class="modal-body mx-3 mb-3 pt-0">
+                <div class="form-white-bg mt-2">
                     <form action="TreasuryRefundRegister.php" method="POST">
                         <input type="hidden" name="action" id="form_action" value="add">
                         <input type="hidden" name="edit_id" id="edit_id">
 
-                        <div class="row mb-2">
-                            <div class="col-md-3 form-label-custom">ที่</div>
-                            <div class="col-md-2">
-                                <input type="number" name="refund_order" id="refund_order" class="form-control form-control-sm" required>
-                            </div>
-                        </div>
-
-                        <div class="row mb-2">
-                            <div class="col-md-3 form-label-custom">วดป</div>
-                            <div class="col-md-3">
-                                <input type="date" name="doc_date" id="doc_date" class="form-control form-control-sm" value="<?php echo date('Y-m-d'); ?>" required>
-                            </div>
-                        </div>
-
-                        <div class="row mb-2">
-                            <div class="col-md-3 form-label-custom">เลขที่เอกสาร</div>
-                            <div class="col-md-4">
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-3 form-label-custom">ที่เอกสาร</div>
+                            <div class="col-md-5">
                                 <input type="text" name="doc_no" id="doc_no" class="form-control form-control-sm" required>
                             </div>
                         </div>
-
-                        <div class="row mb-2">
-                            <div class="col-md-3 form-label-custom">รายการ</div>
+                        
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-3 form-label-custom">เลขที่ใบงวด</div>
                             <div class="col-md-8">
+                                <select name="period_no" id="period_no" class="form-select form-select-sm">
+                                    <option value="">เลือก</option>
+                                    <option value="งวดที่ 1">งวดที่ 1</option>
+                                    <option value="งวดที่ 2">งวดที่ 2</option>
+                                    <option value="งวดที่ 3">งวดที่ 3</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-3 form-label-custom">แผน</div>
+                            <div class="col-md-7">
+                                <select name="plan_name" id="plan_name" class="form-select form-select-sm">
+                                    <option value="">เลือก</option>
+                                    <option value="แผนงานพื้นฐาน">แผนงานพื้นฐาน</option>
+                                    <option value="แผนงานยุทธศาสตร์">แผนงานยุทธศาสตร์</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-3 form-label-custom">ผลผลิต/โครงการ</div>
+                            <div class="col-md-9">
+                                <select name="project_name" id="project_name" class="form-select form-select-sm">
+                                    <option value="">เลือก</option>
+                                    <option value="โครงการ A">โครงการ A</option>
+                                    <option value="โครงการ B">โครงการ B</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-3 form-label-custom">กิจกรรมหลัก</div>
+                            <div class="col-md-9">
+                                <select name="activity_name" id="activity_name" class="form-select form-select-sm">
+                                    <option value="">เลือก</option>
+                                    <option value="กิจกรรม 1">กิจกรรม 1</option>
+                                    <option value="กิจกรรม 2">กิจกรรม 2</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-3 form-label-custom">รายการจ่าย</div>
+                            <div class="col-md-5">
+                                <select name="expense_type" id="expense_type" class="form-select form-select-sm">
+                                    <option value="">เลือก</option>
+                                    <option value="ค่าตอบแทน ใช้สอยและวัสดุ">ค่าตอบแทน ใช้สอยและวัสดุ</option>
+                                    <option value="ค่าสาธารณูปโภค">ค่าสาธารณูปโภค</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 mt-3 align-items-center">
+                            <div class="col-md-3 form-label-custom">รายการ</div>
+                            <div class="col-md-9">
                                 <input type="text" name="description" id="description" class="form-control form-control-sm" required>
                             </div>
                         </div>
 
-                        <div class="row mb-2">
-                            <div class="col-md-3 form-label-custom">จำนวนเงิน</div>
-                            <div class="col-md-3">
+                        <div class="row mb-3 align-items-center">
+                            <div class="col-md-3 form-label-custom">จำนวนเงินคืน</div>
+                            <div class="col-md-4">
                                 <input type="number" step="0.01" name="amount" id="amount" class="form-control form-control-sm" required>
                             </div>
-                            <div class="col-md-1">บาท</div>
                         </div>
 
-                        <div class="text-center mt-4">
-                            <button type="submit" class="btn btn-secondary border-dark text-dark" style="background-color: #e0e0e0;">ตกลง</button>
-                            <button type="button" class="btn btn-secondary border-dark text-dark" style="background-color: #e0e0e0;" data-bs-dismiss="modal">ย้อนกลับ</button>
+                        <div class="row mb-3 text-center">
+                            <div class="col-12">
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" name="save_to_receive" id="save_to_receive" value="1" checked>
+                                    <label class="form-check-label" for="save_to_receive" style="font-size: 0.95rem;">บันทึกข้อมูลในทะเบียนรับเงินงบประมาณด้วย</label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <input type="hidden" name="refund_order" id="refund_order">
+                        <input type="hidden" name="doc_date" id="doc_date" value="<?php echo date('Y-m-d'); ?>">
+
+                        <div class="text-center mt-4 pt-3">
+                            <button type="submit" class="btn btn-secondary px-4 me-2">ตกลง</button>
+                            <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">ย้อนกลับ</button>
                         </div>
                     </form>
                 </div>
             </div>
         </div>
     </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        function openAddModal() {
-            document.getElementById('form_action').value = 'add';
-            document.getElementById('edit_id').value = '';
-            document.getElementById('modalTitle').innerHTML = 'ลงทะเบียน คืนเงินคงคลัง ปีงบประมาณ <?php echo $active_year; ?>';
-            document.querySelector('form').reset();
-            
-            var myModal = new bootstrap.Modal(document.getElementById('addModal'));
-            myModal.show();
-        }
+<div class="modal fade" id="detailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-light border-bottom">
+                <h5 class="modal-title text-primary fw-bold"><i class="fa-solid fa-circle-info"></i> รายละเอียดการคืนเงินคงคลัง</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <table class="table table-bordered mb-0">
+                    <tbody>
+                        <tr><th style="width: 35%; background-color: #f8f9fa;">ที่เอกสาร</th><td id="detail_doc_no"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">เลขที่ใบงวด</th><td id="detail_period_no"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">แผน</th><td id="detail_plan_name"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">ผลผลิต/โครงการ</th><td id="detail_project_name"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">กิจกรรมหลัก</th><td id="detail_activity_name"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">รายการจ่าย</th><td id="detail_expense_type"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">รายการ</th><td id="detail_description"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">จำนวนเงินคืน</th><td id="detail_amount" class="text-danger fw-bold fs-5"></td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">ปิดหน้าต่าง</button>
+            </div>
+        </div>
+    </div>
+</div>
 
-        function openEditModal(data) {
-            document.getElementById('form_action').value = 'edit';
-            document.getElementById('edit_id').value = data.id;
-            document.getElementById('modalTitle').innerHTML = 'แก้ไข คืนเงินคงคลัง';
-            
-            document.getElementById('refund_order').value = data.refund_order;
-            document.getElementById('doc_date').value = data.doc_date;
-            document.getElementById('doc_no').value = data.doc_no;
-            document.getElementById('description').value = data.description;
-            document.getElementById('amount').value = data.amount;
+<?php require_once 'includes/footer.php'; ?>
 
-            var myModal = new bootstrap.Modal(document.getElementById('addModal'));
-            myModal.show();
-        }
-    </script>
+<script>
+    function openAddModal() {
+        document.getElementById('form_action').value = 'add';
+        document.getElementById('edit_id').value = '';
+        document.querySelector('#addModal form').reset();
+        document.getElementById('modalTitle').innerHTML = 'คืนเงินคงคลัง ปีงบประมาณ <?php echo $active_year; ?>';
+        
+        document.getElementById('refund_order').value = '<?php echo $next_refund_order; ?>';
+        
+        var myModal = new bootstrap.Modal(document.getElementById('addModal'));
+        myModal.show();
+    }
 
-</body>
-</html>
+    function openEditModal(data) {
+        document.getElementById('form_action').value = 'edit';
+        document.getElementById('edit_id').value = data.id;
+        document.getElementById('modalTitle').innerHTML = 'แก้ไข ข้อมูลการคืนเงิน';
+        
+        document.getElementById('refund_order').value = data.refund_order;
+        document.getElementById('doc_no').value = data.doc_no;
+        document.getElementById('period_no').value = data.period_no || '';
+        document.getElementById('plan_name').value = data.plan_name || '';
+        document.getElementById('project_name').value = data.project_name || '';
+        document.getElementById('activity_name').value = data.activity_name || '';
+        document.getElementById('expense_type').value = data.expense_type || '';
+        document.getElementById('description').value = data.description;
+        document.getElementById('amount').value = data.amount;
 
-<?php $conn->close(); ?>
+        var myModal = new bootstrap.Modal(document.getElementById('addModal'));
+        myModal.show();
+    }
+
+    function openDetailModal(data) {
+        document.getElementById('detail_doc_no').innerText = data.doc_no || '-';
+        document.getElementById('detail_period_no').innerText = data.period_no || '-';
+        document.getElementById('detail_plan_name').innerText = data.plan_name || '-';
+        document.getElementById('detail_project_name').innerText = data.project_name || '-';
+        document.getElementById('detail_activity_name').innerText = data.activity_name || '-';
+        document.getElementById('detail_expense_type').innerText = data.expense_type || '-';
+        document.getElementById('detail_description').innerText = data.description || '-';
+        
+        let amount = parseFloat(data.amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 });
+        document.getElementById('detail_amount').innerText = amount + ' บาท';
+
+        var detailModal = new bootstrap.Modal(document.getElementById('detailModal'));
+        detailModal.show();
+    }
+</script>
