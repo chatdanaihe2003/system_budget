@@ -8,9 +8,6 @@ $current_page = basename($_SERVER['PHP_SELF']);
 // ชื่อหน้าบนแถบสีทอง
 $page_header = 'ทะเบียนเงินทดรองราชการ';
 
-// --- กำหนดกลุ่มสิทธิ์ที่มีอำนาจจัดการ (เฉพาะ admin และ ADMIN3) ---
-$authorized_roles = ['admin', 'ADMIN3'];
-
 // --- ตรวจสอบและสร้างคอลัมน์ใหม่ให้ฐานข้อมูลอัตโนมัติ (รองรับผู้ยืมเงิน) ---
 $check_col = $conn->query("SHOW COLUMNS FROM government_advance_funds LIKE 'borrower'");
 if ($check_col && $check_col->num_rows == 0) {
@@ -25,14 +22,8 @@ if ($check_col2 && $check_col2->num_rows == 0) {
 // --- Logic จัดการข้อมูล (CRUD) ---
 // --------------------------------------------------------------------------------
 
-// 1. ลบข้อมูล (ลบข้อมูลที่เชื่อมโยงด้วย)
+// 1. ลบข้อมูล (ลบข้อมูลที่เชื่อมโยงและจัดเรียงลำดับใหม่)
 if (isset($_GET['delete_id'])) {
-    // ตรวจสอบสิทธิ์ก่อนลบ
-    if (!in_array($_SESSION['role'], $authorized_roles)) {
-        echo "<script>alert('คุณไม่มีสิทธิ์ลบข้อมูลในหน้านี้'); window.location='Governmentadvancefunds.php';</script>";
-        exit();
-    }
-
     $id = $_GET['delete_id'];
 
     // [Step 1] ดึงข้อมูลเดิมก่อนลบ เพื่อนำไปลบในตารางปลายทาง
@@ -57,6 +48,32 @@ if (isset($_GET['delete_id'])) {
                 $stmt_link_del->bind_param("ii", $del_order, $del_year);
                 $stmt_link_del->execute();
             }
+
+            // [Step 4 - เพิ่มใหม่] รันเลขลำดับใหม่ (Resequence) ให้รายการที่เหลือ
+            $sql_reorder = "SELECT id, advance_order FROM government_advance_funds WHERE budget_year = ? ORDER BY advance_order ASC";
+            $stmt_re = $conn->prepare($sql_reorder);
+            $stmt_re->bind_param("i", $del_year);
+            $stmt_re->execute();
+            $res_re = $stmt_re->get_result();
+            
+            $new_order = 1;
+            while($row_re = $res_re->fetch_assoc()) {
+                $current_id = $row_re['id'];
+                $old_adv_order = $row_re['advance_order'];
+                
+                if($old_adv_order != $new_order) {
+                    // อัปเดตเลขลำดับใหม่ในตารางหลัก
+                    $upd_main = $conn->prepare("UPDATE government_advance_funds SET advance_order = ? WHERE id = ?");
+                    $upd_main->bind_param("ii", $new_order, $current_id);
+                    $upd_main->execute();
+                    
+                    // อัปเดตเลขลำดับใหม่ในตารางอนุมัติด้วย เพื่อให้เชื่อมโยงกันได้ถูกต้อง
+                    $upd_link = $conn->prepare("UPDATE approved_gov_advance_payments SET advance_order = ? WHERE advance_order = ? AND budget_year = ?");
+                    $upd_link->bind_param("iii", $new_order, $old_adv_order, $del_year);
+                    $upd_link->execute();
+                }
+                $new_order++;
+            }
         }
     }
 
@@ -66,12 +83,6 @@ if (isset($_GET['delete_id'])) {
 
 // 2. เพิ่ม หรือ แก้ไขข้อมูล
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    // ตรวจสอบสิทธิ์ก่อนบันทึกหรือแก้ไข
-    if (!in_array($_SESSION['role'], $authorized_roles)) {
-        echo "<script>alert('คุณไม่มีสิทธิ์จัดการข้อมูลในหน้านี้'); window.location='Governmentadvancefunds.php';</script>";
-        exit();
-    }
-
     $doc_no = $_POST['doc_no'] ?? '';
     $ref_doc_no = $_POST['ref_doc_no'] ?? '';
     $description = $_POST['description'] ?? '';
@@ -79,7 +90,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $return_amount = $_POST['return_amount'] ?? 0; // รับค่าเงินคืน
     $borrower = $_POST['borrower'] ?? '';
 
-    if (isset($_POST['action']) && $_POST['action'] == 'add') {
+    $action = $_POST['action'] ?? '';
+
+    if ($action == 'add') {
         $doc_date = date('Y-m-d'); // ลงวันที่ปัจจุบันอัตโนมัติ
 
         // หาระดับเลขที่ลำดับถัดไปอัตโนมัติ
@@ -109,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         }
 
-    } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
+    } elseif ($action == 'edit') {
         $id = $_POST['edit_id'];
 
         $stmt_old = $conn->prepare("SELECT advance_order, budget_year FROM government_advance_funds WHERE id = ?");
@@ -168,7 +181,7 @@ require_once 'includes/navbar.php';
     <div class="content-card">
         <h2 class="page-title">ทะเบียนเงินทดรองราชการ ปีงบประมาณ <?php echo $active_year; ?></h2>
         <div class="d-flex justify-content-end mb-2">
-            <button class="btn btn-add" onclick="checkPermissionAndOpenModal('add')">
+            <button class="btn btn-add" onclick="checkPermissionAndOpenModal('add')" style="background-color: #0b1526 !important; color: white !important; border-radius: 8px; padding: 8px 25px; font-weight: 500; border: none;">
                 <i class="fa-solid fa-plus me-1"></i> จ่ายเงินทดรองราชการ
             </button>
         </div>
@@ -199,13 +212,13 @@ require_once 'includes/navbar.php';
                             echo "<td class='td-center'>" . $row['advance_order'] . "</td>";
                             echo "<td class='td-center'>" . thai_date_short($row['doc_date']) . "</td>";
                             echo "<td class='td-center'>" . htmlspecialchars($row['doc_no']) . "</td>";
-                            echo "<td class='td-center text-warning'>" . ($row['ref_doc_no'] ?: '') . "</td>"; 
+                            echo "<td class='td-center text-warning'>" . htmlspecialchars($row['ref_doc_no'] ?: '') . "</td>"; 
                             echo "<td>" . htmlspecialchars($row['description']) . "</td>";
                             echo "<td class='td-right'>" . number_format($row['loan_amount'], 2) . "</td>";
                             echo "<td class='td-center'>" . ($row['return_amount'] > 0 ? number_format($row['return_amount'], 2) : '<i class="fa-solid fa-magnifying-glass text-primary"></i>') . "</td>";
                             echo "<td class='td-center'><button class='action-btn btn-detail' onclick='openDetailModal(".htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').")'><i class='fa-solid fa-list-ul'></i></button></td>";
                             echo "<td class='td-center'><a href='javascript:void(0)' onclick='confirmDelete(".$row['id'].")' class='action-btn btn-delete'><i class='fa-solid fa-xmark'></i></a></td>";
-                            echo "<td class='td-center'><button class='action-btn btn-edit' onclick='checkPermissionAndOpenModal(\"edit\", ".json_encode($row).")'><i class='fa-solid fa-pen'></i></button></td>";
+                            echo "<td class='td-center'><button class='action-btn btn-edit' onclick='checkPermissionAndOpenModal(\"edit\", ".htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').")'><i class='fa-solid fa-pen'></i></button></td>";
                             echo "<td class='td-center'><button class='action-btn btn-print' onclick='alert(\"พิมพ์ใบสั่งจ่าย\")'><i class='fa-solid fa-print'></i></button></td>";
                             echo "</tr>";
                         }
@@ -224,7 +237,7 @@ require_once 'includes/navbar.php';
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header d-block pb-3 border-bottom">
-                <h5 class="modal-title-custom" id="modalTitle">ทะเบียนเงินทดรองราชการ ปีงบประมาณ <?php echo $active_year; ?></h5>
+                <h5 class="modal-title-custom text-teal" id="modalTitle">ทะเบียนเงินทดรองราชการ ปีงบประมาณ <?php echo $active_year; ?></h5>
             </div>
             <div class="modal-body mx-4 my-3 pt-0">
                 <div class="form-white-bg border-0 p-0">
@@ -235,50 +248,39 @@ require_once 'includes/navbar.php';
                         <div class="row mb-3 align-items-center mt-3">
                             <div class="col-md-4 form-label-custom">ที่เอกสาร</div>
                             <div class="col-md-4">
-                                <input type="text" name="doc_no" id="doc_no" class="form-control form-control-sm" required>
+                                <input type="text" name="doc_no" id="doc_no" class="form-control form-control-sm">
                             </div>
                         </div>
 
                         <div class="row mb-3 align-items-center">
                             <div class="col-md-4 form-label-custom">อ้างอิงทะเบียนขอเบิก/ขอยืมเงิน</div>
                             <div class="col-md-7">
-                                <select name="ref_doc_no" id="ref_doc_no" class="form-select form-select-sm">
-                                    <option value="">เลือก</option>
-                                    <option value="อ้างอิงที่ 1">อ้างอิงที่ 1</option>
-                                    <option value="อ้างอิงที่ 2">อ้างอิงที่ 2</option>
-                                </select>
+                                <input type="text" name="ref_doc_no" id="ref_doc_no" class="form-control form-control-sm">
                             </div>
                         </div>
 
                         <div class="row mb-3 align-items-center">
-                            <div class="col-md-4 form-label-custom">รายการ</div>
+                            <div class="col-md-4 form-label-custom">รายการ <span class="text-danger">*</span></div>
                             <div class="col-md-8">
                                 <input type="text" name="description" id="description" class="form-control form-control-sm" required>
                             </div>
                         </div>
 
                         <div class="row mb-3 align-items-center">
-                            <div class="col-md-4 form-label-custom">จำนวนเงิน</div>
+                            <div class="col-md-4 form-label-custom">จำนวนเงิน <span class="text-danger">*</span></div>
                             <div class="col-md-3">
                                 <input type="number" step="0.01" name="loan_amount" id="loan_amount" class="form-control form-control-sm" required>
                             </div>
-                            <div class="col-md-1 pt-1 text-start">บาท</div>
-                        </div>
-
-                        <div class="row mb-3 align-items-center">
-                            <div class="col-md-4 form-label-custom">จำนวนเงินคืน</div>
-                            <div class="col-md-3">
-                                <input type="number" step="0.01" name="return_amount" id="return_amount" class="form-control form-control-sm" value="0.00">
-                            </div>
-                            <div class="col-md-1 pt-1 text-start">บาท</div>
                         </div>
 
                         <div class="row mb-4 align-items-center">
-                            <div class="col-md-4 form-label-custom">ผู้ยืมเงิน</div>
+                            <div class="col-md-4 form-label-custom">ผู้ยืมเงิน <span class="text-danger">*</span></div>
                             <div class="col-md-6">
-                                <input type="text" name="borrower" id="borrower" class="form-control form-control-sm">
+                                <input type="text" name="borrower" id="borrower" class="form-control form-control-sm" required>
                             </div>
                         </div>
+
+                        <input type="hidden" name="return_amount" id="return_amount" value="0.00">
 
                         <div class="text-center mt-4 pt-3 border-top">
                             <button type="submit" class="btn-form me-2">ตกลง</button>
@@ -294,16 +296,24 @@ require_once 'includes/navbar.php';
 <div class="modal fade" id="detailModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header d-block"><h5 class="modal-title-custom">รายละเอียด</h5></div>
-            <div class="modal-body mx-3 mb-3">
-                <div class="form-white-bg">
-                    <div class="row mb-2"><div class="col-md-3 form-label-custom" style="text-align: right;">ที่เอกสาร :</div><div class="col-md-9" id="view_doc_no"></div></div>
-                    <div class="row mb-2"><div class="col-md-3 form-label-custom" style="text-align: right;">รายการ :</div><div class="col-md-9" id="view_description"></div></div>
-                    <div class="row mb-2"><div class="col-md-3 form-label-custom" style="text-align: right;">จำนวนเงินยืม :</div><div class="col-md-9" id="view_loan_amount"></div></div>
-                    <div class="row mb-2"><div class="col-md-3 form-label-custom" style="text-align: right;">จำนวนเงินคืน :</div><div class="col-md-9" id="view_return_amount"></div></div>
-                    <div class="row mb-2"><div class="col-md-3 form-label-custom" style="text-align: right;">ผู้ยืมเงิน :</div><div class="col-md-9" id="view_borrower"></div></div>
-                    <div class="text-center mt-3 pt-3 border-top"><button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">ปิด</button></div>
-                </div>
+            <div class="modal-header bg-light border-bottom">
+                <h5 class="modal-title text-primary fw-bold"><i class="fa-solid fa-circle-info"></i> รายละเอียดเงินทดรองราชการ</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <table class="table table-bordered mb-0">
+                    <tbody>
+                        <tr><th style="width: 35%; background-color: #f8f9fa;">ที่เอกสาร</th><td id="view_doc_no"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">อ้างอิงทะเบียนขอเบิก/ขอยืมเงิน</th><td id="view_ref_doc_no"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">รายการ</th><td id="view_description"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">จำนวนเงินยืม</th><td id="view_loan_amount" class="text-danger fw-bold fs-5"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">จำนวนเงินคืน</th><td id="view_return_amount" class="text-success fw-bold fs-5"></td></tr>
+                        <tr><th style="background-color: #f8f9fa;">ผู้ยืมเงิน</th><td id="view_borrower"></td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">ปิดหน้าต่าง</button>
             </div>
         </div>
     </div>
@@ -312,17 +322,12 @@ require_once 'includes/navbar.php';
 <?php require_once 'includes/footer.php'; ?>
 
 <script>
-    const userRole = '<?php echo $_SESSION['role']; ?>';
-    const authorizedRoles = ['admin', 'ADMIN3'];
-
     function checkPermissionAndOpenModal(action, data = null) {
-        if (!authorizedRoles.includes(userRole)) { alert('คุณไม่มีสิทธิ์จัดการข้อมูลในหน้านี้'); return; }
         if (action === 'add') { openAddModal(); } else { openEditModal(data); }
     }
 
     function confirmDelete(id) {
-        if (!authorizedRoles.includes(userRole)) { alert('คุณไม่มีสิทธิ์ลบข้อมูลในหน้านี้'); return; }
-        if (confirm('ยืนยันการลบรายการ? ข้อมูลในหน้าอนุมัติจะถูกลบด้วย')) { window.location.href = '?delete_id=' + id; }
+        if (confirm('ยืนยันการลบรายการ? ลำดับทั้งหมดจะถูกจัดเรียงใหม่ และข้อมูลในหน้าอนุมัติจะถูกลบด้วย')) { window.location.href = '?delete_id=' + id; }
     }
 
     function openAddModal() {
@@ -330,7 +335,7 @@ require_once 'includes/navbar.php';
         document.getElementById('edit_id').value = '';
         document.getElementById('modalTitle').innerHTML = 'ทะเบียนเงินทดรองราชการ ปีงบประมาณ <?php echo $active_year; ?>';
         document.querySelector('#addModal form').reset();
-        document.getElementById('return_amount').value = '0.00'; // เริ่มต้นเงินคืนที่ 0
+        document.getElementById('return_amount').value = '0.00'; 
         new bootstrap.Modal(document.getElementById('addModal')).show();
     }
 
@@ -340,7 +345,10 @@ require_once 'includes/navbar.php';
         document.getElementById('modalTitle').innerHTML = 'แก้ไข เงินทดรองราชการ ปีงบประมาณ <?php echo $active_year; ?>';
         
         document.getElementById('doc_no').value = data.doc_no || '';
+        
+        // [แก้ไข] เปลี่ยนวิธีส่งค่าให้ช่อง Input ปกติ
         document.getElementById('ref_doc_no').value = data.ref_doc_no || '';
+        
         document.getElementById('description').value = data.description || '';
         document.getElementById('loan_amount').value = data.loan_amount || '';
         document.getElementById('return_amount').value = data.return_amount || '0.00';
@@ -351,10 +359,12 @@ require_once 'includes/navbar.php';
 
     function openDetailModal(data) {
         document.getElementById('view_doc_no').innerText = data.doc_no || '-';
+        document.getElementById('view_ref_doc_no').innerText = data.ref_doc_no || '-';
         document.getElementById('view_description').innerText = data.description || '-';
-        document.getElementById('view_loan_amount').innerText = parseFloat(data.loan_amount).toLocaleString('th-TH', {minimumFractionDigits: 2}) + ' บาท';
+        document.getElementById('view_loan_amount').innerText = parseFloat(data.loan_amount || 0).toLocaleString('th-TH', {minimumFractionDigits: 2}) + ' บาท';
         document.getElementById('view_return_amount').innerText = parseFloat(data.return_amount || 0).toLocaleString('th-TH', {minimumFractionDigits: 2}) + ' บาท';
         document.getElementById('view_borrower').innerText = data.borrower || '-';
+        
         new bootstrap.Modal(document.getElementById('detailModal')).show();
     }
 </script>

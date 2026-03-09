@@ -107,51 +107,180 @@ $res_next = $stmt_next->get_result();
 $row_next = $res_next->fetch_assoc();
 $next_withdrawal_order = ($row_next['max_order'] ? $row_next['max_order'] : 0) + 1;
 
-$projects_opt = [
-    ['id' => 1, 'name' => '006 การพัฒนาบุคลากร (OD)...'],
-    ['id' => 2, 'name' => 'โครงการปรับปรุงภูมิทัศน์'],
-    ['id' => 3, 'name' => 'โครงการจัดซื้อครุภัณฑ์']
-];
+// --- ดึงข้อมูลจากตาราง project_outcomes เพื่อนำไปแสดงใน Dropdown ผลผลิต/โครงการ ---
+$projects_opt = [];
+$check_po_tb = $conn->query("SHOW TABLES LIKE 'project_outcomes'");
+if ($check_po_tb && $check_po_tb->num_rows > 0) {
+    // ดึงข้อมูลโครงการของปีงบประมาณปัจจุบัน
+    $sql_po_opt = "SELECT id, project_name FROM project_outcomes WHERE budget_year = ? AND project_name IS NOT NULL AND project_name != '' ORDER BY project_name ASC";
+    $stmt_po_opt = $conn->prepare($sql_po_opt);
+    $stmt_po_opt->bind_param("i", $active_year);
+    $stmt_po_opt->execute();
+    $res_po_opt = $stmt_po_opt->get_result();
+    
+    if ($res_po_opt && $res_po_opt->num_rows > 0) {
+        while($po = $res_po_opt->fetch_assoc()) {
+            $projects_opt[] = [
+                'id' => $po['id'],
+                'name' => $po['project_name']
+            ];
+        }
+    }
+}
+
+// --- ดึงข้อมูลจากตาราง activities เพื่อนำไปแสดงใน Dropdown กิจกรรมหลัก ---
+$activities_opt = [];
+$act_table = "activities";
+$check_act_tb = $conn->query("SHOW TABLES LIKE 'activities'");
+// ถ้าไม่มีตาราง activities ลองหาตารางชื่อ activity เผื่อไว้
+if(!$check_act_tb || $check_act_tb->num_rows == 0) {
+    $check_act_tb2 = $conn->query("SHOW TABLES LIKE 'activity'");
+    if($check_act_tb2 && $check_act_tb2->num_rows > 0) {
+        $act_table = "activity";
+    }
+}
+
+if($conn->query("SHOW TABLES LIKE '$act_table'")->num_rows > 0) {
+    // เช็คคอลัมน์เพื่อความปลอดภัย
+    $act_cols = [];
+    $col_q = $conn->query("SHOW COLUMNS FROM $act_table");
+    while($c = $col_q->fetch_assoc()) { $act_cols[] = $c['Field']; }
+    
+    // หาชื่อคอลัมน์ที่เก็บชื่อกิจกรรม
+    $act_name_col = "";
+    if (in_array('activity_name', $act_cols)) $act_name_col = "activity_name";
+    elseif (in_array('name', $act_cols)) $act_name_col = "name";
+    elseif (in_array('description', $act_cols)) $act_name_col = "description";
+    
+    if ($act_name_col != "") {
+        // ดึงตามปีงบประมาณถ้ามีคอลัมน์
+        if (in_array('budget_year', $act_cols)) {
+            $sql_act_opt = "SELECT id, $act_name_col FROM $act_table WHERE budget_year = ? AND $act_name_col IS NOT NULL AND $act_name_col != '' ORDER BY $act_name_col ASC";
+            $stmt_act_opt = $conn->prepare($sql_act_opt);
+            $stmt_act_opt->bind_param("i", $active_year);
+            $stmt_act_opt->execute();
+            $res_act_opt = $stmt_act_opt->get_result();
+        } else {
+            $sql_act_opt = "SELECT id, $act_name_col FROM $act_table WHERE $act_name_col IS NOT NULL AND $act_name_col != '' ORDER BY $act_name_col ASC";
+            $res_act_opt = $conn->query($sql_act_opt);
+        }
+        
+        if ($res_act_opt && $res_act_opt->num_rows > 0) {
+            while($act = $res_act_opt->fetch_assoc()) {
+                $activities_opt[] = [
+                    'id' => $act['id'],
+                    'name' => $act[$act_name_col]
+                ];
+            }
+        }
+    }
+}
+
+// --- ค้นหาและดึงข้อมูล ประเภทรายจ่าย (รายการจ่าย) แบบอัตโนมัติ ---
+$expense_options = "";
+$exp_table = "";
+
+// 1. ค้นหาตารางที่น่าจะเป็นเรื่องรายการจ่าย
+$possible_exp_tables = ['expensesbudget', 'expenses_budget', 'expense_budget', 'expensebudget', 'expenses', 'expense_types', 'expense_type'];
+foreach ($possible_exp_tables as $ptable) {
+    $check_exists = $conn->query("SHOW TABLES LIKE '$ptable'");
+    if ($check_exists && $check_exists->num_rows > 0) {
+        $exp_table = $ptable;
+        break; 
+    }
+}
+
+if ($exp_table !== "") {
+    // 2. ดึงรายชื่อคอลัมน์
+    $col_q_exp = $conn->query("SHOW COLUMNS FROM `$exp_table`");
+    $exp_cols = [];
+    if($col_q_exp){
+        while($c = $col_q_exp->fetch_assoc()) {
+            $exp_cols[] = $c['Field'];
+        }
+    }
+    
+    // 3. หาคอลัมน์ที่เป็นชื่อจริงๆ
+    $exp_name_col = "";
+    $possible_exp_cols = ['name', 'expense_name', 'budget_name', 'title', 'description', 'expense_type', 'type_name'];
+    
+    foreach($possible_exp_cols as $p_col) {
+        if (in_array($p_col, $exp_cols)) {
+            $exp_name_col = $p_col;
+            break;
+        }
+    }
+
+    if ($exp_name_col == "" && count($exp_cols) > 1) {
+        $exp_name_col = $exp_cols[1]; // ลองใช้คอลัมน์ที่ 2 หากไม่เจอชื่อที่คาดไว้
+    }
+
+    if ($exp_name_col != "") {
+        // 4. ดึงข้อมูล
+        if (in_array('budget_year', $exp_cols)) {
+            $sql_exp = "SELECT DISTINCT `$exp_name_col` FROM `$exp_table` WHERE budget_year = ? AND `$exp_name_col` IS NOT NULL AND `$exp_name_col` != '' ORDER BY `$exp_name_col` ASC";
+            $stmt_exp = $conn->prepare($sql_exp);
+            $stmt_exp->bind_param("i", $active_year);
+            $stmt_exp->execute();
+            $res_exp = $stmt_exp->get_result();
+        } else {
+            $sql_exp = "SELECT DISTINCT `$exp_name_col` FROM `$exp_table` WHERE `$exp_name_col` IS NOT NULL AND `$exp_name_col` != '' ORDER BY `$exp_name_col` ASC";
+            $res_exp = $conn->query($sql_exp);
+        }
+
+        if ($res_exp && $res_exp->num_rows > 0) {
+            $unique_exps = []; 
+            while($exp = $res_exp->fetch_assoc()) {
+                $e_name = $exp[$exp_name_col];
+                if (!in_array($e_name, $unique_exps)) {
+                    $unique_exps[] = $e_name;
+                    $expense_options .= "<option value='".htmlspecialchars($e_name, ENT_QUOTES, 'UTF-8')."'>".htmlspecialchars($e_name, ENT_QUOTES, 'UTF-8')."</option>";
+                }
+            }
+        }
+    }
+}
 
 require_once 'includes/header.php';
 require_once 'includes/navbar.php';
 ?>
 
 <style>
-    .btn-add { background-color: #0b1526 !important; color: white !important; border-radius: 8px; padding: 8px 25px; font-weight: 500; border: none; transition: 0.3s; }
-    .btn-add:hover { background-color: #1a2a44 !important; transform: translateY(-1px); }
-    .status-box { width: 16px; height: 16px; display: inline-block; vertical-align: middle; margin-right: 5px; cursor: pointer; border: 1px solid rgba(0,0,0,0.1); }
-    .bg-green { background-color: #00ff00; }
-    .bg-red { background-color: #ff0000; }
+    .total-row { background-color: #f8f9fa !important; font-weight: bold; color: #333; }
+    .status-box { width: 18px; height: 18px; display: inline-block; vertical-align: middle; cursor: pointer; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: 0.2s;}
+    .status-box:hover { transform: scale(1.1); }
+    .bg-green { background-color: #198754; } /* เปลี่ยนเป็นสีเขียว Bootstrap */
+    .bg-red { background-color: #dc3545; }   /* เปลี่ยนเป็นสีแดง Bootstrap */
     
-    .form-white-bg { background-color: #ffffff; padding: 25px; border-radius: 8px; border: 1px solid #dee2e6; }
-    .form-label-custom { font-weight: bold; text-align: right; font-size: 0.9rem; color: #333; padding-top: 5px; }
-    .modal-header { border-bottom: 1px solid #dee2e6; background-color: #f8f9fa; border-top-left-radius: 12px; border-top-right-radius: 12px; }
-    .modal-title-custom { color: #333; font-weight: bold; width: 100%; text-align: center; font-size: 1.2rem;}
+    .action-container { display: flex; justify-content: center; gap: 6px; }
 </style>
 
-<div class="container-fluid pb-5 px-3">
-    <div class="content-card">
-        <h2 class="page-title text-center mb-4">ทะเบียนขอเบิก/ขอยืมเงินโครงการ ปีงบประมาณ <?php echo $active_year; ?></h2>
-
-        <div class="d-flex justify-content-end mb-3">
-            <button class="btn btn-add" onclick="checkAdminAction('add')">
+<div class="container-fluid pb-5 px-4">
+    <div class="content-card mt-4" style="background:#fff; border-radius:15px; padding:25px; box-shadow: 0 5px 20px rgba(0,0,0,0.05);">
+        
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+            <h2 class="page-title m-0 fw-bold text-primary">
+                <i class="fa-solid fa-file-invoice-dollar me-2"></i> ทะเบียนขอเบิก/ขอยืมเงินโครงการ 
+                <span class="fs-5 text-secondary fw-normal">ปี <?php echo $active_year; ?></span>
+            </h2>
+            
+            <button class="btn btn-primary shadow-sm px-4" onclick="checkAdminAction('add')" style="border-radius: 8px; font-weight: 500;">
                 <i class="fa-solid fa-plus me-1"></i> เพิ่มข้อมูล
             </button>
         </div>
 
-        <div class="table-responsive">
-            <table class="table table-hover table-custom bg-white">
-                <thead>
+        <div class="table-responsive border rounded mb-4">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
                     <tr>
-                        <th style="width: 5%;">ที่</th>
-                        <th style="width: 10%;">วดป</th>
-                        <th style="width: 10%;">ที่เอกสาร</th>
-                        <th style="width: 35%;">รายการ</th>
-                        <th style="width: 10%;">จำนวนเงิน</th>
-                        <th style="width: 5%;">สถานะ</th>
-                        <th style="width: 8%;">รายละเอียด</th>
-                        <th style="width: 17%;">จัดการ</th>
+                        <th class="text-center py-3" style="width: 5%;">ที่</th>
+                        <th class="text-center py-3" style="width: 10%;">วดป</th>
+                        <th class="py-3" style="width: 12%;">ที่เอกสาร</th>
+                        <th class="py-3" style="width: 33%;">รายการ</th>
+                        <th class="text-end py-3" style="width: 10%;">จำนวนเงิน</th>
+                        <th class="text-center py-3" style="width: 8%;">สถานะ</th>
+                        <th class="text-center py-3" style="width: 8%;">รายละเอียด</th>
+                        <th class="text-center py-3" style="width: 14%;">จัดการ</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -174,11 +303,11 @@ require_once 'includes/navbar.php';
                             $status_class = ($current_status == 'green') ? 'bg-green' : 'bg-red';
 
                             echo "<tr>";
-                            echo "<td class='text-center'>" . htmlspecialchars($withdrawal_order) . "</td>";
+                            echo "<td class='text-center text-muted'>" . htmlspecialchars($withdrawal_order) . "</td>";
                             echo "<td class='text-center'>" . thai_date_short($row['doc_date'] ?? '') . "</td>";
-                            echo "<td>" . htmlspecialchars($row['doc_no'] ?? '') . "</td>";
+                            echo "<td class='fw-bold text-secondary'>" . htmlspecialchars($row['doc_no'] ?? '-') . "</td>";
                             echo "<td>" . htmlspecialchars($row['description'] ?? '') . "</td>";
-                            echo "<td class='text-end'>" . number_format($amount, 2) . "</td>";
+                            echo "<td class='text-end fw-bold text-success'>" . number_format($amount, 2) . "</td>";
                             
                             echo "<td class='text-center'>
                                     <a href='?toggle_id=".$row['id']."&current_status=".$current_status."' onclick=\"return confirm('ต้องการเปลี่ยนสถานะใช่หรือไม่?');\">
@@ -187,37 +316,40 @@ require_once 'includes/navbar.php';
                                   </td>";
                             
                             echo "<td class='text-center'>";
-                            echo '<button class="action-btn text-info" title="รายละเอียด" onclick=\'openDetailModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')\'><i class="fa-regular fa-rectangle-list"></i></button>';
+                            echo '<button class="btn btn-sm btn-outline-info px-2 shadow-sm" title="รายละเอียด" onclick=\'openDetailModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')\'><i class="fa-solid fa-file-lines"></i></button>';
                             echo "</td>";
 
-                            echo "<td class='td-center'>";
-                            echo '<button class="action-btn btn-edit" title="แก้ไข" onclick=\'checkAdminAction("edit", '.json_encode($row).')\'><i class="fa-solid fa-pen-to-square"></i></button>';
-                            echo '<a href="javascript:void(0)" onclick="checkAdminDelete('.($row['id'] ?? 0).')" class="action-btn btn-delete" title="ลบ"><i class="fa-solid fa-trash-can"></i></a>';
+                            echo "<td class='text-center'>";
+                            echo "<div class='action-container'>";
+                            echo '<a href="javascript:void(0)" onclick="checkAdminDelete('.($row['id'] ?? 0).')" class="btn btn-sm btn-outline-danger px-2 shadow-sm" title="ลบ"><i class="fa-solid fa-trash-can"></i></a>';
+                            echo '<button class="btn btn-sm btn-outline-warning px-2 shadow-sm" title="แก้ไข" onclick=\'checkAdminAction("edit", '.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')\'><i class="fa-solid fa-pen-to-square"></i></button>';
+                            echo "</div>";
                             echo "</td>";
                             echo "</tr>";
                         }
-                        echo "<tr style='background-color: #f8f9fa; font-weight: bold;'>";
-                        echo "<td colspan='4' class='text-center'>รวมยอดทั้งหมด</td>";
-                        echo "<td class='text-end text-danger'>" . number_format($total_amount, 2) . "</td>";
+                        echo "<tr class='total-row table-light'>";
+                        echo "<td colspan='4' class='text-end py-3'><strong>รวมยอดทั้งหมด :</strong></td>";
+                        echo "<td class='text-end py-3 text-danger fs-5'><strong>" . number_format($total_amount, 2) . "</strong></td>";
                         echo "<td colspan='3'></td>";
                         echo "</tr>";
                     } else {
-                        echo "<tr><td colspan='8' class='text-center py-5 text-muted'>ยังไม่มีข้อมูลในปีงบประมาณ $active_year</td></tr>";
+                        echo "<tr><td colspan='8' class='text-center py-5 text-muted'><i class='fa-regular fa-folder-open fs-2 mb-2 d-block text-light'></i>ยังไม่มีข้อมูลในปีงบประมาณ $active_year</td></tr>";
                     }
                     ?>
                 </tbody>
             </table>
         </div>
 
-        <div class="mt-4 p-4" style="background-color: #ffffff; border-radius: 8px; border: 1px solid #dee2e6;">
-            <div class="d-flex align-items-start mb-3">
-                <div class="status-box bg-green mt-1" style="width: 18px; height: 18px;"></div>
-                <div class="ms-3" style="font-size: 1rem; color: #333; font-weight: 500;">แสดงสถานะขอเบิก/ส่งใช้เงินยืม</div>
+        <div class="p-4 bg-light rounded border border-1 mt-4">
+            <div class="d-flex align-items-center mb-2">
+                <div class="status-box bg-green me-3"></div>
+                <div class="fw-bold text-dark">แสดงสถานะขอเบิก/ส่งใช้เงินยืม เรียบร้อยแล้ว</div>
             </div>
-            <div class="d-flex align-items-start border-top pt-3">
-                <div class="status-box bg-red mt-1" style="width: 18px; height: 18px;"></div>
-                <div class="ms-3" style="font-size: 1rem; color: #333; font-weight: 500; line-height: 1.5;">
-                    แสดงสถานะขอยืมเงิน ซึ่งเมื่อมีการส่งใช้เงินยืม เจ้าหน้าที่เพียงคลิกที่ สัญลักษณ์ สีแดง สถานะก็จะเปลี่ยนเป็นสีเขียว ลูกหนี้เงินยืมก็หมดไป
+            <div class="d-flex align-items-center">
+                <div class="status-box bg-red me-3"></div>
+                <div class="text-muted" style="font-size: 0.95rem;">
+                    <strong class="text-dark">แสดงสถานะขอยืมเงิน</strong> 
+                    เมื่อมีการส่งใช้เงินยืม เจ้าหน้าที่เพียงคลิกที่สัญลักษณ์สีแดง สถานะก็จะเปลี่ยนเป็นสีเขียว (ลูกหนี้เงินยืมหมดไป)
                 </div>
             </div>
         </div>
@@ -227,167 +359,197 @@ require_once 'includes/navbar.php';
 
 <div class="modal fade" id="addModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header d-block">
-                <h5 class="modal-title-custom" id="modalTitle">ลงทะเบียน ขอเบิก/ขอยืมเงินโครงการ</h5>
+        <div class="modal-content shadow border-0">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold" id="modalTitle"><i class="fa-solid fa-file-invoice-dollar me-2"></i> ลงทะเบียน ขอเบิก/ขอยืมเงินโครงการ</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body mx-3 mb-3">
-                <div class="form-white-bg">
-                    <form action="RequestforWithdrawalProjectLoan.php" method="POST">
-                        <input type="hidden" name="action" id="form_action" value="add">
-                        <input type="hidden" name="edit_id" id="edit_id">
+            <form action="RequestforWithdrawalProjectLoan.php" method="POST">
+                <div class="modal-body p-4">
+                    <input type="hidden" name="action" id="form_action" value="add">
+                    <input type="hidden" name="edit_id" id="edit_id">
 
-                        <div class="row mb-2 align-items-center">
-                            <div class="col-md-3 form-label-custom">ที่ (อัตโนมัติ)</div>
-                            <div class="col-md-3">
-                                <input type="number" name="withdrawal_order" id="withdrawal_order" class="form-control form-control-sm" style="background-color: #f1f5f9; cursor: not-allowed;" readonly required>
-                            </div>
-                            <div class="col-md-2 form-label-custom">วดป ลงทะเบียน</div>
-                            <div class="col-md-4">
-                                <input type="date" name="doc_date" id="doc_date" class="form-control form-control-sm" required>
-                            </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold text-muted" style="font-size: 0.85rem;">ลำดับที่ (อัตโนมัติ)</label>
+                            <input type="number" name="withdrawal_order" id="withdrawal_order" class="form-control bg-light fw-bold" readonly required>
                         </div>
-
-                        <div class="row mb-2 align-items-center">
-                            <div class="col-md-3 form-label-custom">ที่เอกสาร</div>
-                            <div class="col-md-4">
-                                <input type="text" name="doc_no" id="doc_no" class="form-control form-control-sm">
-                            </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold text-muted" style="font-size: 0.85rem;">วดป ลงทะเบียน <span class="text-danger">*</span></label>
+                            <input type="date" name="doc_date" id="doc_date" class="form-control" required>
                         </div>
+                    </div>
 
-                        <div class="row mb-2">
-                            <div class="col-md-3"></div>
-                            <div class="col-md-9">
-                                <div class="form-check mb-1">
+                    <div class="row mb-4">
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold text-muted" style="font-size: 0.85rem;">ที่เอกสาร</label>
+                            <input type="text" name="doc_no" id="doc_no" class="form-control" placeholder="ระบุเลขที่เอกสาร (ถ้ามี)">
+                        </div>
+                    </div>
+
+                    <div class="mb-4 p-3 border rounded bg-light">
+                        <label class="form-label fw-bold text-dark mb-3"><i class="fa-solid fa-layer-group me-1"></i> ประเภทการทำรายการ</label>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-check mb-2">
                                     <input class="form-check-input" type="radio" name="withdrawal_type" id="type1" value="1" checked>
                                     <label class="form-check-label" for="type1">ขอยืมเงินงบประมาณ</label>
                                 </div>
-                                <div class="form-check mb-1">
+                                <div class="form-check mb-2">
                                     <input class="form-check-input" type="radio" name="withdrawal_type" id="type2" value="2">
                                     <label class="form-check-label" for="type2">ขอยืมเงินนอกงบประมาณ</label>
                                 </div>
-                                <div class="form-check mb-1">
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-check mb-2">
                                     <input class="form-check-input" type="radio" name="withdrawal_type" id="type3" value="3">
                                     <label class="form-check-label" for="type3">ขอยืมเงินทดรองราชการ</label>
                                 </div>
-                                <div class="form-check mb-1">
+                                <div class="form-check mb-2">
                                     <input class="form-check-input" type="radio" name="withdrawal_type" id="type4" value="4">
-                                    <label class="form-check-label" for="type4">ขอเบิก</label>
+                                    <label class="form-check-label text-success fw-bold" for="type4">ขอเบิก</label>
                                 </div>
                             </div>
                         </div>
+                    </div>
 
-                        <div class="row mb-2 align-items-center">
-                            <div class="col-md-3 form-label-custom">รายการ</div>
-                            <div class="col-md-9">
-                                <input type="text" name="description" id="description" class="form-control form-control-sm" required>
-                            </div>
-                        </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold text-muted" style="font-size: 0.85rem;">รายการ <span class="text-danger">*</span></label>
+                        <input type="text" name="description" id="description" class="form-control" placeholder="ระบุรายละเอียดรายการ" required>
+                    </div>
 
-                        <div class="row mb-2 align-items-center">
-                            <div class="col-md-3 form-label-custom">โครงการ</div>
-                            <div class="col-md-9">
-                                <select name="project_id" id="project_id" class="form-select form-select-sm">
-                                    <option value="0">เลือก</option>
-                                    <?php foreach ($projects_opt as $p): ?>
-                                        <option value="<?php echo $p['id']; ?>"><?php echo htmlspecialchars($p['name']); ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold text-muted" style="font-size: 0.85rem;">ผลผลิต/โครงการ</label>
+                            <select name="project_id" id="project_id" class="form-select">
+                                <option value="0">เลือกโครงการ</option>
+                                <?php foreach ($projects_opt as $p): ?>
+                                    <option value="<?php echo htmlspecialchars($p['id']); ?>"><?php echo htmlspecialchars($p['name']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold text-muted" style="font-size: 0.85rem;">กิจกรรม</label>
+                            <select name="activity_id" id="activity_id" class="form-select">
+                                <option value="0">เลือกกิจกรรม</option>
+                                <?php foreach ($activities_opt as $a): ?>
+                                    <option value="<?php echo htmlspecialchars($a['id']); ?>"><?php echo htmlspecialchars($a['name']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
 
-                        <div class="row mb-2 align-items-center">
-                            <div class="col-md-3 form-label-custom">กิจกรรม</div>
-                            <div class="col-md-9">
-                                <select name="activity_id" id="activity_id" class="form-select form-select-sm">
-                                    <option value="0">เลือกโครงการก่อน</option>
-                                </select>
-                            </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold text-muted" style="font-size: 0.85rem;">จำนวนเงิน (บาท) <span class="text-danger">*</span></label>
+                            <input type="number" step="0.01" name="amount" id="amount" class="form-control text-end fw-bold text-primary" placeholder="0.00" required>
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold text-muted" style="font-size: 0.85rem;">แหล่งของเงิน</label>
+                            <input type="text" name="fund_source" id="fund_source" class="form-control" placeholder="ระบุแหล่งเงิน (ถ้ามี)">
+                        </div>
+                    </div>
 
-                        <div class="row mb-2 align-items-center">
-                            <div class="col-md-3 form-label-custom">จำนวนเงิน</div>
-                            <div class="col-md-4">
-                                <input type="number" step="0.01" name="amount" id="amount" class="form-control form-control-sm" required>
-                            </div>
-                            <div class="col-md-2 pt-1">บาท</div>
+                    <div class="row mb-3">
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold text-muted" style="font-size: 0.85rem;">ประเภทรายการจ่าย</label>
+                            <select name="expense_type" id="expense_type" class="form-select">
+                                <option value="">เลือกประเภทรายการจ่าย</option>
+                                <?php echo $expense_options; ?>
+                            </select>
                         </div>
+                    </div>
 
-                        <div class="row mb-2 align-items-center">
-                            <div class="col-md-3 form-label-custom">แหล่งเงิน</div>
-                            <div class="col-md-9">
-                                <input type="text" name="fund_source" id="fund_source" class="form-control form-control-sm">
-                            </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold text-muted" style="font-size: 0.85rem;">ผู้ขอเบิก/ขอยืมเงิน</label>
+                            <input type="text" name="requester" id="requester" class="form-control">
                         </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-bold text-muted" style="font-size: 0.85rem;">ฎีกา</label>
+                            <input type="text" name="dika_no" id="dika_no" class="form-control">
+                        </div>
+                    </div>
 
-                        <div class="row mb-2 align-items-center">
-                            <div class="col-md-3 form-label-custom">ประเภทรายการจ่าย</div>
-                            <div class="col-md-4">
-                                <select name="expense_type" id="expense_type" class="form-select form-select-sm">
-                                    <option value="">เลือก</option>
-                                    <option value="ค่าใช้สอย">ค่าใช้สอย</option>
-                                    <option value="ค่าวัสดุ">ค่าวัสดุ</option>
-                                </select>
-                            </div>
+                    <div class="row mb-2">
+                        <div class="col-md-12">
+                            <label class="form-label fw-bold text-muted" style="font-size: 0.85rem;">เจ้าหน้าที่</label>
+                            <input type="text" name="officer_name" id="officer_name" class="form-control bg-light" value="<?php echo $_SESSION['name'] ?? ''; ?>" readonly>
                         </div>
-
-                        <div class="row mb-2 align-items-center">
-                            <div class="col-md-3 form-label-custom">ผู้ขอเบิก/ขอยืมเงิน</div>
-                            <div class="col-md-6">
-                                <input type="text" name="requester" id="requester" class="form-control form-control-sm">
-                            </div>
-                        </div>
-
-                        <div class="row mb-2 align-items-center">
-                            <div class="col-md-3 form-label-custom">ฎีกา</div>
-                            <div class="col-md-4">
-                                <input type="text" name="dika_no" id="dika_no" class="form-control form-control-sm">
-                            </div>
-                        </div>
-
-                        <div class="row mb-2 align-items-center">
-                            <div class="col-md-3 form-label-custom">เจ้าหน้าที่</div>
-                            <div class="col-md-6">
-                                <input type="text" name="officer_name" id="officer_name" class="form-control form-control-sm" value="<?php echo $_SESSION['name'] ?? ''; ?>">
-                            </div>
-                        </div>
-
-                        <div class="text-center mt-4 pt-3 border-top">
-                            <button type="submit" class="btn btn-primary px-4 me-2">ตกลง</button>
-                            <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">ย้อนกลับ</button>
-                        </div>
-                    </form>
+                    </div>
                 </div>
-            </div>
+                <div class="modal-footer bg-light border-0 py-3">
+                    <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold"><i class="fa-solid fa-save me-1"></i> บันทึกข้อมูล</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
 
 <div class="modal fade" id="detailModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header border-0 pb-0">
-                <h5 class="fw-bold w-100 text-center mt-2 text-teal">ทะเบียน คุมหลักฐานขอเบิก/ขอยืมเงิน ปีงบประมาณ <?php echo $active_year; ?></h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <div class="modal-content shadow border-0">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title fw-bold w-100 text-center"><i class="fa-solid fa-circle-info me-2"></i> รายละเอียดการขอเบิก/ขอยืมเงิน ปี <?php echo $active_year; ?></h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body bg-light p-4 mx-2 mb-2 rounded">
-                <div class="card border-0 shadow-sm"><div class="card-body">
-                    <div class="row mb-2"><div class="col-4 text-end fw-bold">วดป ลงทะเบียน :</div><div class="col-8" id="v_date"></div></div>
-                    <div class="row mb-2"><div class="col-4 text-end fw-bold">ที่เอกสาร :</div><div class="col-8" id="v_no"></div></div>
-                    <div class="row mb-2"><div class="col-4 text-end fw-bold" id="v_type_label">ขอยืมเงินงบประมาณ :</div><div class="col-8" id="v_type"></div></div>
-                    <div class="row mb-2"><div class="col-4 text-end fw-bold">รายการ :</div><div class="col-8" id="v_desc"></div></div>
-                    <div class="row mb-2"><div class="col-4 text-end fw-bold">โครงการ :</div><div class="col-8" id="v_proj"></div></div>
-                    <div class="row mb-2"><div class="col-4 text-end fw-bold">กิจกรรม :</div><div class="col-8" id="v_act"></div></div>
-                    <div class="row mb-2"><div class="col-4 text-end fw-bold">จำนวนเงิน :</div><div class="col-8 text-danger fw-bold" id="v_amount"></div></div>
-                    <div class="row mb-2"><div class="col-4 text-end fw-bold">แหล่งเงิน :</div><div class="col-8" id="v_fund"></div></div>
-                    <div class="row mb-2"><div class="col-4 text-end fw-bold">ประเภทรายการจ่าย :</div><div class="col-8" id="v_extype"></div></div>
-                    <div class="row mb-2"><div class="col-4 text-end fw-bold">ผู้ขอเบิก/ขอยืมเงิน :</div><div class="col-8" id="v_req"></div></div>
-                    <div class="row mb-2"><div class="col-4 text-end fw-bold">ฎีกา :</div><div class="col-8" id="v_dika"></div></div>
-                    <div class="row mb-2"><div class="col-4 text-end fw-bold">เจ้าหน้าที่ :</div><div class="col-8" id="v_off"></div></div>
-                </div></div>
+            <div class="modal-body p-4">
+                <div class="card border-0 bg-light p-3">
+                    <div class="row mb-3">
+                        <div class="col-4 text-end fw-bold text-muted">วดป ลงทะเบียน :</div>
+                        <div class="col-8 text-dark fw-bold" id="v_date"></div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-4 text-end fw-bold text-muted">ที่เอกสาร :</div>
+                        <div class="col-8 text-dark" id="v_no"></div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-4 text-end fw-bold text-muted" id="v_type_label">ประเภท :</div>
+                        <div class="col-8 text-primary fw-bold" id="v_type"></div>
+                    </div>
+                    <hr>
+                    <div class="row mb-3">
+                        <div class="col-4 text-end fw-bold text-muted">รายการ :</div>
+                        <div class="col-8 text-dark" id="v_desc"></div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-4 text-end fw-bold text-muted">โครงการ :</div>
+                        <div class="col-8 text-dark" id="v_proj"></div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-4 text-end fw-bold text-muted">กิจกรรม :</div>
+                        <div class="col-8 text-dark" id="v_act"></div>
+                    </div>
+                    <hr>
+                    <div class="row mb-3 align-items-center">
+                        <div class="col-4 text-end fw-bold text-muted">จำนวนเงิน :</div>
+                        <div class="col-8 text-danger fw-bold fs-5" id="v_amount"></div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-4 text-end fw-bold text-muted">แหล่งเงิน :</div>
+                        <div class="col-8 text-dark" id="v_fund"></div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-4 text-end fw-bold text-muted">ประเภทรายการจ่าย :</div>
+                        <div class="col-8 text-dark" id="v_extype"></div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-4 text-end fw-bold text-muted">ผู้ขอเบิก/ขอยืมเงิน :</div>
+                        <div class="col-8 text-dark" id="v_req"></div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-4 text-end fw-bold text-muted">ฎีกา :</div>
+                        <div class="col-8 text-dark" id="v_dika"></div>
+                    </div>
+                    <div class="row mb-2">
+                        <div class="col-4 text-end fw-bold text-muted">เจ้าหน้าที่ :</div>
+                        <div class="col-8 text-dark" id="v_off"></div>
+                    </div>
+                </div>
             </div>
-            <div class="modal-footer border-0">
-                <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal"><< กลับหน้าก่อน</button>
+            <div class="modal-footer bg-white border-0 py-3 justify-content-center">
+                <button type="button" class="btn btn-secondary px-5" data-bs-dismiss="modal">ปิดหน้าต่าง</button>
             </div>
         </div>
     </div>
@@ -396,41 +558,65 @@ require_once 'includes/navbar.php';
 <?php require_once 'includes/footer.php'; ?>
 
 <script>
+    const projectsList = <?php echo json_encode($projects_opt, JSON_UNESCAPED_UNICODE); ?>;
+    const activitiesList = <?php echo json_encode($activities_opt, JSON_UNESCAPED_UNICODE); ?>;
+    const currentUserName = '<?php echo isset($_SESSION["fullname"]) ? addslashes($_SESSION["fullname"]) : (isset($_SESSION["name"]) ? addslashes($_SESSION["name"]) : ""); ?>';
+
     function checkAdminAction(action, data = null) {
         if (action === 'add') { openAddModal(); } else { openEditModal(data); }
     }
+    
     function checkAdminDelete(id) {
-        if (confirm('ยืนยันลบ?')) { window.location.href = `?delete_id=${id}`; }
+        if (confirm('ยืนยันลบข้อมูลรายการนี้ใช่หรือไม่?')) { window.location.href = `?delete_id=${id}`; }
     }
     
     function openAddModal() {
         document.getElementById('form_action').value = 'add';
         document.getElementById('edit_id').value = '';
         document.querySelector('#addModal form').reset();
+        
+        document.getElementById('modalTitle').innerHTML = '<i class="fa-solid fa-file-invoice-dollar me-2"></i> ลงทะเบียน ขอเบิก/ขอยืมเงินโครงการ';
         document.getElementById('withdrawal_order').value = '<?php echo $next_withdrawal_order; ?>';
         document.getElementById('doc_date').value = '<?php echo date('Y-m-d'); ?>';
-        document.getElementById('officer_name').value = '<?php echo $_SESSION['name'] ?? ''; ?>';
+        document.getElementById('officer_name').value = currentUserName;
+        
         new bootstrap.Modal(document.getElementById('addModal')).show();
     }
 
     function openEditModal(data) {
         document.getElementById('form_action').value = 'edit';
         document.getElementById('edit_id').value = data.id;
+        
+        document.getElementById('modalTitle').innerHTML = '<i class="fa-solid fa-pen-to-square me-2"></i> แก้ไขข้อมูล ทะเบียนขอเบิก/ขอยืมเงิน';
+        
         document.getElementById('withdrawal_order').value = data.withdrawal_order;
         document.getElementById('doc_date').value = data.doc_date;
         document.getElementById('doc_no').value = data.doc_no;
         document.getElementById('description').value = data.description;
-        document.getElementById('project_id').value = data.project_id;
-        document.getElementById('activity_id').value = data.activity_id;
+        
+        let projSelect = document.getElementById('project_id');
+        projSelect.value = data.project_id || 0;
+        
+        let actSelect = document.getElementById('activity_id');
+        actSelect.value = data.activity_id || 0;
+        
         document.getElementById('amount').value = data.amount;
         document.getElementById('fund_source').value = data.fund_source || '';
-        document.getElementById('expense_type').value = data.expense_type;
+
+        let expSelect = document.getElementById('expense_type');
+        let expValue = data.expense_type || '';
+        if(expValue && !Array.from(expSelect.options).some(opt => opt.value === expValue)) {
+            expSelect.add(new Option(expValue, expValue));
+        }
+        expSelect.value = expValue;
+        
         document.getElementById('requester').value = data.requester;
         document.getElementById('dika_no').value = data.dika_no || '';
         document.getElementById('officer_name').value = data.officer_name || '';
 
         let radios = document.getElementsByName('withdrawal_type');
         for(let r of radios) { if(r.value == data.withdrawal_type) r.checked = true; }
+        
         new bootstrap.Modal(document.getElementById('addModal')).show();
     }
 
@@ -444,10 +630,20 @@ require_once 'includes/navbar.php';
 
         document.getElementById('v_desc').innerText = data.description;
         
-        let projText = "006 การพัฒนาบุคลากร (OD)..."; // ดึงชื่อโครงการจากอาร์เรย์มาแสดงแทน ID ในงานจริง
+        let projText = "-";
+        if(projectsList && projectsList.length > 0) {
+            let foundProj = projectsList.find(p => p.id == data.project_id);
+            if(foundProj) projText = foundProj.name;
+        }
         document.getElementById('v_proj').innerText = projText; 
         
-        document.getElementById('v_act').innerText = data.activity_id || '-';
+        let actText = "-";
+        if(activitiesList && activitiesList.length > 0) {
+            let foundAct = activitiesList.find(a => a.id == data.activity_id);
+            if(foundAct) actText = foundAct.name;
+        }
+        document.getElementById('v_act').innerText = actText;
+        
         document.getElementById('v_amount').innerText = parseFloat(data.amount).toLocaleString(undefined, {minimumFractionDigits: 2}) + " บาท";
         document.getElementById('v_fund').innerText = data.fund_source || '-';
         document.getElementById('v_extype').innerText = data.expense_type || '-';

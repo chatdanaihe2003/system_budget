@@ -48,9 +48,13 @@
         <a href="index.php" class="nav-link-custom <?php echo ($current_page == 'index.php') ? 'active' : ''; ?>">รายการหลัก</a>
         
         <?php 
-        // ซ่อนเมนู "ตั้งค่าระบบ" สำหรับผู้ใช้ที่เป็น ID User หรือ user ทั่วไป
+        // เช็คสิทธิ์เพื่อซ่อน/แสดงเมนู
         $nav_role = isset($_SESSION['role']) ? strtolower(trim($_SESSION['role'])) : '';
-        if ($nav_role !== 'id user' && $nav_role !== 'userทั่วไป' && $nav_role !== 'user'): 
+        $is_regular_user = ($nav_role === 'id user' || $nav_role === 'userทั่วไป' || $nav_role === 'user');
+        $is_planner = ($nav_role === 'แผนงาน');
+        
+        // ถ้าไม่ใช่ ID User / userทั่วไป ถึงจะเห็นเมนูตั้งค่าระบบ
+        if (!$is_regular_user): 
         ?>
         <div class="dropdown">
             <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['officers.php', 'yearbudget.php', 'plan.php', 'Projectoutcomes.php', 'Activity.php', 'Sourcemoney.php', 'Expensesbudget.php', 'Mainmoney.php', 'Subtypesmoney.php', 'manage_users.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตั้งค่าระบบ</a>
@@ -76,8 +80,9 @@
                 ?>
                 <li><a class="dropdown-item <?php echo ($current_page == 'plan.php') ? 'active' : ''; ?>" href="plan.php">แผนงาน</a></li>
                 <?php endif; ?>
+                
                 <?php 
-                // ซ่อนเมนู Projectoutcomes.php ถ้าไม่ใช่ admin หรือ แผนงาน
+                // แสดงเมนู Projectoutcomes.php ให้ แผนงาน หรือ admin 
                 if ($nav_role === 'admin' || $nav_role === 'แผนงาน'): 
                 ?>
                 <li><a class="dropdown-item <?php echo ($current_page == 'Projectoutcomes.php') ? 'active' : ''; ?>" href="Projectoutcomes.php">โครงการตามแผนปฎิบัติการ</a></li>
@@ -124,8 +129,12 @@
                 <?php endif; ?>
             </ul>
         </div>
-        <?php endif; ?>
+        <?php endif; // สิ้นสุดการซ่อนเมนูตั้งค่าระบบสำหรับ ID User ?>
         
+        <?php 
+        // ซ่อนเมนู ทะเบียนรับ, ทะเบียนขอเบิก, ทะเบียนจ่าย, ตรวจสอบ สำหรับ แผนงาน และ ID User
+        if (!$is_regular_user && !$is_planner): 
+        ?>
         <div class="dropdown">
             <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Budgetallocation.php', 'Receivebudget.php', 'Receiveoffbudget.php', 'Receivenational.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ทะเบียนรับ</a>
             <ul class="dropdown-menu shadow-sm">
@@ -176,7 +185,12 @@
                 <li><a class="dropdown-item" href="Requisition items with incorrect installment vouchers.php">รายการขอเบิกฯที่วางฎีกาผิดใบงวด</a></li>
             </ul>
         </div>
+        <?php endif; // สิ้นสุดการซ่อนเมนู ทะเบียนรับ, ทะเบียนขอเบิก, ทะเบียนจ่าย, ตรวจสอบ สำหรับ แผนงาน และ ID User ?>
 
+        <?php 
+        // ซ่อนเมนู รายงาน สำหรับ ID User (แผนงานเห็นได้)
+        if (!$is_regular_user): 
+        ?>
         <div class="dropdown">
             <a href="#" class="nav-link-custom dropdown-toggle" data-bs-toggle="dropdown">รายงาน</a>
             <ul class="dropdown-menu shadow-sm">
@@ -193,9 +207,35 @@
                 <li><a class="dropdown-item" href="Loan Report.php">รายงานลูกหนี้เงินยืม</a></li>
             </ul>
         </div>
+        <?php endif; // สิ้นสุดการซ่อนเมนู รายงาน สำหรับ ID User ?>
+        
+        <?php 
+        // ซ่อนเมนู ตัดยอดงบประมาณโครงการ สำหรับ การเงิน
+        if ($nav_role !== 'การเงิน'): 
+        ?>
         <div class="dropdown">
-            <a href="Cut off the project budget.php" class="nav-link-custom ms-auto">ตัดยอดงบประมาณโครงการ</a>
+            <a href="#" class="nav-link-custom dropdown-toggle <?php echo (in_array($current_page, ['Cut off the project budget.php', 'Approve the cut off amount.php', 'Expenses.php'])) ? 'active' : ''; ?>" data-bs-toggle="dropdown">ตัดยอดงบประมาณโครงการ</a>
+            <ul class="dropdown-menu shadow-sm">
+                
+                <?php 
+                // ซ่อนเมนู "ตัดยอดงบประมาณ" สำหรับ แผนงาน
+                if (!$is_planner): 
+                ?>
+                <li><a class="dropdown-item <?php echo ($current_page == 'Cut off the project budget.php') ? 'active' : ''; ?>" href="Cut off the project budget.php">ตัดยอดงบประมาณ</a></li>
+                <?php endif; ?>
+                
+                <?php 
+                // ซ่อนเมนู "อนุมัติการตัดยอด" สำหรับ ID User
+                if (!$is_regular_user): 
+                ?>
+                <li><a class="dropdown-item <?php echo ($current_page == 'Approve the cut off amount.php') ? 'active' : ''; ?>" href="Approve the cut off amount.php">อนุมัติการตัดยอด</a></li>
+                <?php endif; ?>
+                
+                <li><a class="dropdown-item <?php echo ($current_page == 'Expenses.php') ? 'active' : ''; ?>" href="Expenses.php">ประวัติ</a></li>
+            </ul>
         </div>
+        <?php endif; // สิ้นสุดการซ่อนเมนู ตัดยอดงบประมาณโครงการ สำหรับ การเงิน ?>
+        
         <a href="#" class="nav-link-custom ms-auto">คู่มือ</a>
     </div>
 </div>

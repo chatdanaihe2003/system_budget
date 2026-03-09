@@ -1,17 +1,10 @@
 <?php
-// [1. เรียกใช้ DB] (รวม Session, Check Login, Active Year, Date Functions มาให้แล้ว)
 require_once 'includes/db.php'; 
 
-// ตั้งค่าตัวแปรสำหรับ Header
 $page_title = "ทะเบียนสั่งจ่ายเงินนอกงบประมาณ - AMSS++";
 $current_page = basename($_SERVER['PHP_SELF']); 
-// ชื่อหน้าบนแถบสีทอง
 $page_header = 'ทะเบียนสั่งจ่ายเงินนอกงบประมาณ';
 
-// --- กำหนดกลุ่มสิทธิ์ที่มีอำนาจจัดการ (เฉพาะ admin และ ADMIN4) ---
-$authorized_roles = ['admin', 'ADMIN4'];
-
-// --- ตรวจสอบและสร้างคอลัมน์ใหม่ให้ฐานข้อมูลอัตโนมัติ (แยกเช็คทีละคอลัมน์เพื่อความชัวร์) ---
 $columns_to_check = [
     'off_budget_type' => 'VARCHAR(255) NULL',
     'expense_type' => 'VARCHAR(255) NULL',
@@ -25,21 +18,8 @@ foreach ($columns_to_check as $col => $type) {
     }
 }
 
-// --------------------------------------------------------------------------------
-// --- Logic จัดการข้อมูล (CRUD) ---
-// --------------------------------------------------------------------------------
-
-// 1. ลบข้อมูล (ลบข้อมูลที่เชื่อมโยงด้วย)
 if (isset($_GET['delete_id'])) {
-    // ตรวจสอบสิทธิ์ก่อนลบ
-    if (!in_array($_SESSION['role'], $authorized_roles)) {
-        echo "<script>alert('คุณไม่มีสิทธิ์ลบข้อมูลในหน้านี้'); window.location='Orderpaymentoutsidethebudget.php';</script>";
-        exit();
-    }
-
     $id = $_GET['delete_id'];
-
-    // [Step 1] ดึงข้อมูล exp_order และ budget_year ก่อนลบ
     $stmt_get = $conn->prepare("SELECT exp_order, budget_year FROM off_budget_expenditures WHERE id = ?");
     $stmt_get->bind_param("i", $id);
     $stmt_get->execute();
@@ -50,43 +30,33 @@ if (isset($_GET['delete_id'])) {
         $del_exp_order = $row_del['exp_order'];
         $del_budget_year = $row_del['budget_year'];
 
-        // [Step 2] ลบข้อมูลจากตารางหลัก
         $stmt = $conn->prepare("DELETE FROM off_budget_expenditures WHERE id = ?");
         $stmt->bind_param("i", $id);
         
         if ($stmt->execute()) {
-            // [Step 3] ลบข้อมูลที่เชื่อมโยงในหน้าอนุมัติจ่าย (Approvedformaintypepayment.php)
             $stmt_link_del = $conn->prepare("DELETE FROM approved_main_payments WHERE pay_order = ? AND budget_year = ? AND payment_type = 'เงินนอกงบประมาณ'");
             $stmt_link_del->bind_param("ii", $del_exp_order, $del_budget_year);
             $stmt_link_del->execute();
         }
     }
-
     header("Location: Orderpaymentoutsidethebudget.php");
     exit();
 }
 
-// 2. เพิ่ม หรือ แก้ไขข้อมูล
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    // ตรวจสอบสิทธิ์ก่อนจัดการข้อมูล
-    if (!in_array($_SESSION['role'], $authorized_roles)) {
-        echo "<script>alert('คุณไม่มีสิทธิ์จัดการข้อมูลในหน้านี้'); window.location='Orderpaymentoutsidethebudget.php';</script>";
-        exit();
-    }
+    $doc_no = isset($_POST['doc_no']) ? $_POST['doc_no'] : '';
+    $ref_withdraw_no = isset($_POST['ref_withdraw_no']) ? $_POST['ref_withdraw_no'] : '';
+    $ref_petition_no = isset($_POST['ref_petition_no']) ? $_POST['ref_petition_no'] : '';
+    $off_budget_type = isset($_POST['off_budget_type']) ? $_POST['off_budget_type'] : '';
+    $description = isset($_POST['description']) ? $_POST['description'] : '';
+    $expense_type = isset($_POST['expense_type']) ? $_POST['expense_type'] : '';
+    $amount = isset($_POST['amount']) ? $_POST['amount'] : 0;
+    $payee = isset($_POST['payee']) ? $_POST['payee'] : '';
+    $action = isset($_POST['action']) ? $_POST['action'] : '';
 
-    $doc_no = $_POST['doc_no'] ?? '';
-    $ref_withdraw_no = $_POST['ref_withdraw_no'] ?? '';
-    $ref_petition_no = $_POST['ref_petition_no'] ?? '';
-    $off_budget_type = $_POST['off_budget_type'] ?? '';
-    $description = $_POST['description'] ?? '';
-    $expense_type = $_POST['expense_type'] ?? '';
-    $amount = $_POST['amount'] ?? 0;
-    $payee = $_POST['payee'] ?? '';
-
-    if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        $doc_date = date('Y-m-d'); // ใช้วันที่ปัจจุบัน
+    if ($action == 'add') {
+        $doc_date = date('Y-m-d');
         
-        // หาระดับเลขที่ลำดับถัดไปอัตโนมัติ
         $sql_max = "SELECT MAX(exp_order) as max_order FROM off_budget_expenditures WHERE budget_year = ?";
         $stmt_max = $conn->prepare($sql_max);
         $stmt_max->bind_param("i", $active_year);
@@ -95,29 +65,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $row_max = $res_max->fetch_assoc();
         $exp_order = ($row_max['max_order'] ? $row_max['max_order'] : 0) + 1;
 
-        // [ส่วนที่ 1] บันทึกลงตารางหลัก
         $stmt = $conn->prepare("INSERT INTO off_budget_expenditures (budget_year, exp_order, doc_date, doc_no, ref_withdraw_no, ref_petition_no, off_budget_type, description, expense_type, amount, payee) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
         if ($stmt) {
             $stmt->bind_param("iisssssssds", $active_year, $exp_order, $doc_date, $doc_no, $ref_withdraw_no, $ref_petition_no, $off_budget_type, $description, $expense_type, $amount, $payee);
             $stmt->execute();
         }
 
-        // [ส่วนที่ 2] ส่งข้อมูลไปที่หน้าอนุมัติจ่าย (Approvedformaintypepayment.php)
         $payment_type_fixed = 'เงินนอกงบประมาณ'; 
         $approval_status_init = 'pending';    
         $payment_status_init = 'unpaid';      
 
         $sql_link = "INSERT INTO approved_main_payments (budget_year, pay_order, doc_date, doc_no, ref_withdraw_no, ref_petition_no, description, amount, payment_type, approval_status, payment_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $stmt_link = $conn->prepare($sql_link);
-        
         if ($stmt_link) {
             $stmt_link->bind_param("iisssssdsss", $active_year, $exp_order, $doc_date, $doc_no, $ref_withdraw_no, $ref_petition_no, $description, $amount, $payment_type_fixed, $approval_status_init, $payment_status_init);
             $stmt_link->execute();
         }
 
-    } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
+    } elseif ($action == 'edit') {
         $id = $_POST['edit_id'];
-
         $stmt_old = $conn->prepare("SELECT exp_order, budget_year FROM off_budget_expenditures WHERE id = ?");
         $stmt_old->bind_param("i", $id);
         $stmt_old->execute();
@@ -130,7 +96,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if ($stmt) {
             $stmt->bind_param("ssssssdsi", $doc_no, $ref_withdraw_no, $ref_petition_no, $off_budget_type, $description, $expense_type, $amount, $payee, $id);
             if ($stmt->execute()) {
-                // อัปเดตข้อมูลในหน้าอนุมัติจ่ายให้ตรงกัน
                 $stmt_update_link = $conn->prepare("UPDATE approved_main_payments SET doc_no=?, ref_withdraw_no=?, ref_petition_no=?, description=?, amount=? WHERE pay_order=? AND budget_year=? AND payment_type='เงินนอกงบประมาณ'");
                 if ($stmt_update_link) {
                     $stmt_update_link->bind_param("ssssdii", $doc_no, $ref_withdraw_no, $ref_petition_no, $description, $amount, $old_exp_order, $current_budget_year);
@@ -143,14 +108,108 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     exit();
 }
 
-// --- ดึงข้อมูลเฉพาะปี Active ---
 $sql_data = "SELECT * FROM off_budget_expenditures WHERE budget_year = ? ORDER BY exp_order ASC";
 $stmt_data = $conn->prepare($sql_data);
 $stmt_data->bind_param("i", $active_year);
 $stmt_data->execute();
 $result_data = $stmt_data->get_result();
-
 $total_amount = 0;
+
+// --- [ปรับปรุงใหม่] ค้นหาและดึงข้อมูลจากตาราง Expensesbudget เพื่อมาแสดงในช่อง ประเภทรายการจ่าย ---
+$expense_type_options = "";
+$exp_table = "";
+
+// 1. ค้นหาตารางที่น่าจะเป็น Expensesbudget
+$possible_exp_tables = ['expensesbudget', 'expense_budget', 'expenses_budget', 'expensebudget', 'expenses', 'expense_types', 'expense_type', 'type_expense'];
+foreach ($possible_exp_tables as $ptable) {
+    $check_exists = $conn->query("SHOW TABLES LIKE '$ptable'");
+    if ($check_exists && $check_exists->num_rows > 0) {
+        $exp_table = $ptable;
+        break; 
+    }
+}
+
+if ($exp_table === "") {
+    $tb_check_exp = $conn->query("SHOW TABLES");
+    if ($tb_check_exp) {
+        while ($tb_row = $tb_check_exp->fetch_array()) {
+            $t_name = strtolower($tb_row[0]);
+            if (strpos($t_name, 'expense') !== false) {
+                // ข้ามตารางที่ไม่ใช่เป้าหมาย
+                if (in_array($t_name, ['receive_budget', 'budget_allocations', 'project_refunds', 'treasury_refunds', 'fund_rollovers', 'project_withdrawals', 'treasury_withdrawals', 'budget_expenditures', 'approved_main_payments', 'off_budget_expenditures'])) continue;
+                $exp_table = $tb_row[0];
+                break; 
+            }
+        }
+    }
+}
+
+if ($exp_table !== "") {
+    // 2. ดึงรายชื่อคอลัมน์ของตาราง
+    $col_q_exp = $conn->query("SHOW COLUMNS FROM `$exp_table`");
+    $exp_cols = [];
+    if($col_q_exp){
+        while($c = $col_q_exp->fetch_assoc()) {
+            $exp_cols[] = $c['Field'];
+        }
+    }
+    
+    // 3. หาคอลัมน์ที่น่าจะเก็บชื่อประเภทรายจ่าย
+    $exp_name_col = "";
+    $possible_exp_cols = ['name', 'expense_name', 'budget_name', 'title', 'description', 'expense_type', 'type_name', 'expensesbudget', 'expensebudget', 'expense', 'type'];
+    
+    foreach($possible_exp_cols as $p_col) {
+        foreach($exp_cols as $actual_col) {
+            if(strtolower($actual_col) == strtolower($p_col)) {
+                $exp_name_col = $actual_col;
+                break 2;
+            }
+        }
+    }
+
+    if ($exp_name_col == "") {
+        foreach($exp_cols as $col) {
+            $lcol = strtolower($col);
+            if (!in_array($lcol, ['id', 'budget_year', 'created_at', 'updated_at', 'status', 'date'])) {
+                $exp_name_col = $col;
+                break;
+            }
+        }
+    }
+
+    if ($exp_name_col != "") {
+        // 4. คิวรี่ข้อมูลออกมาสร้าง Option
+        $has_b_year = false;
+        foreach($exp_cols as $col) {
+            if(strtolower($col) == 'budget_year') {
+                $has_b_year = true;
+                break;
+            }
+        }
+
+        if ($has_b_year) {
+            $sql_exp = "SELECT DISTINCT `$exp_name_col` FROM `$exp_table` WHERE budget_year = ? AND `$exp_name_col` IS NOT NULL AND `$exp_name_col` != '' ORDER BY `$exp_name_col` ASC";
+            $stmt_exp = $conn->prepare($sql_exp);
+            $stmt_exp->bind_param("i", $active_year);
+            $stmt_exp->execute();
+            $res_exp = $stmt_exp->get_result();
+        } else {
+            $sql_exp = "SELECT DISTINCT `$exp_name_col` FROM `$exp_table` WHERE `$exp_name_col` IS NOT NULL AND `$exp_name_col` != '' ORDER BY `$exp_name_col` ASC";
+            $res_exp = $conn->query($sql_exp);
+        }
+
+        if ($res_exp && $res_exp->num_rows > 0) {
+            $unique_exps = []; 
+            while($exp = $res_exp->fetch_assoc()) {
+                $e_name = trim($exp[$exp_name_col]);
+                if ($e_name != '' && !in_array($e_name, $unique_exps)) {
+                    $unique_exps[] = $e_name;
+                    $expense_type_options .= "<option value='".htmlspecialchars($e_name, ENT_QUOTES, 'UTF-8')."'>".htmlspecialchars($e_name, ENT_QUOTES, 'UTF-8')."</option>";
+                }
+            }
+        }
+    }
+}
 
 require_once 'includes/header.php';
 require_once 'includes/navbar.php';
@@ -159,8 +218,6 @@ require_once 'includes/navbar.php';
 <style>
     .total-row td { background-color: #f8f9fa !important; font-weight: bold; color: #333; border-top: 2px solid #ddd; }
     .total-text { color: #d63384; font-weight: bold; font-size: 0.8rem;}
-    
-    /* พื้นหลังแบบฟอร์มให้เป็นสีขาวตามต้องการ */
     .form-white-bg { background-color: #ffffff; padding: 25px 40px; border-radius: 8px; border: 1px solid #e0e0e0; }
     .form-label-custom { font-weight: normal; text-align: right; font-size: 0.95rem; color: #000; padding-top: 5px; }
     .modal-header { border-bottom: none; background-color: #ffffff; border-top-left-radius: 12px; border-top-right-radius: 12px; }
@@ -176,7 +233,7 @@ require_once 'includes/navbar.php';
     <div class="content-card">
         <h2 class="page-title">ทะเบียนสั่งจ่ายเงินนอกงบประมาณ ปีงบประมาณ <?php echo $active_year; ?></h2>
         <div class="d-flex align-items-center mb-2">
-            <button class="btn btn-add" onclick="checkPermissionAndOpenModal('add')">เพิ่มรายการสั่งจ่าย</button>
+            <button class="btn btn-add" onclick="openAddModal()">เพิ่มรายการสั่งจ่าย</button>
         </div>
         <div class="table-responsive">
             <table class="table table-striped table-custom">
@@ -205,13 +262,13 @@ require_once 'includes/navbar.php';
                             echo "<td class='td-center'>" . $row['exp_order'] . "</td>";
                             echo "<td class='td-center'>" . thai_date_short($row['doc_date']) . "</td>";
                             echo "<td class='td-center'>" . $row['doc_no'] . "</td>";
-                            echo "<td class='td-center text-warning'>" . htmlspecialchars($row['ref_withdraw_no'] ?: '') . "</td>"; 
-                            echo "<td class='td-center text-danger'>" . htmlspecialchars($row['ref_petition_no'] ?: '') . "</td>"; 
+                            echo "<td class='td-center text-warning'>" . htmlspecialchars($row['ref_withdraw_no'] ? $row['ref_withdraw_no'] : '') . "</td>"; 
+                            echo "<td class='td-center text-danger'>" . htmlspecialchars($row['ref_petition_no'] ? $row['ref_petition_no'] : '') . "</td>"; 
                             echo "<td class='td-left'>" . htmlspecialchars($row['description']) . "</td>";
                             echo "<td class='td-right'>" . number_format($row['amount'], 2) . "</td>";
                             echo "<td class='td-center'><button class='action-btn btn-detail' onclick='openDetailModal(".htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').")'><i class='fa-solid fa-list-ul'></i></button></td>";
                             echo "<td class='td-center'><a href='javascript:void(0)' onclick='confirmDelete(".$row['id'].")' class='action-btn btn-delete'><i class='fa-solid fa-xmark'></i></a></td>";
-                            echo "<td class='td-center'><button class='action-btn btn-edit' onclick='checkPermissionAndOpenModal(\"edit\", ".htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').")'><i class='fa-solid fa-pen'></i></button></td>";
+                            echo "<td class='td-center'><button class='action-btn btn-edit' onclick='openEditModal(".htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').")'><i class='fa-solid fa-pen'></i></button></td>";
                             echo "<td class='td-center'><button class='action-btn btn-print' onclick='alert(\"ฟังก์ชันพิมพ์กำลังปรับปรุง\")'><i class='fa-solid fa-print'></i></button></td>";
                             echo "<td class='td-center total-text'>ถึงนี้</td>";
                             echo "</tr>";
@@ -249,14 +306,18 @@ require_once 'includes/navbar.php';
                         <div class="row mb-2 align-items-center">
                             <div class="col-md-4 form-label-custom">อ้างอิงทะเบียนขอเบิก/ขอยืมเงิน</div>
                             <div class="col-md-7">
-                                <input type="text" name="ref_withdraw_no" id="ref_withdraw_no" class="form-control form-control-sm">
+                                <select name="ref_withdraw_no" id="ref_withdraw_no" class="form-select form-select-sm">
+                                    <option value="">เลือก</option>
+                                    </select>
                             </div>
                         </div>
 
                         <div class="row mb-2 align-items-center">
                             <div class="col-md-4 form-label-custom">อ้างอิงเลขที่ฎีกา</div>
                             <div class="col-md-7">
-                                <input type="text" name="ref_petition_no" id="ref_petition_no" class="form-control form-control-sm">
+                                <select name="ref_petition_no" id="ref_petition_no" class="form-select form-select-sm">
+                                    <option value="">เลือก</option>
+                                    </select>
                             </div>
                         </div>
 
@@ -281,13 +342,10 @@ require_once 'includes/navbar.php';
 
                         <div class="row mb-2 align-items-center">
                             <div class="col-md-4 form-label-custom">ประเภทรายการจ่าย</div>
-                            <div class="col-md-4">
+                            <div class="col-md-5">
                                 <select name="expense_type" id="expense_type" class="form-select form-select-sm">
                                     <option value="">เลือก</option>
-                                    <option value="ค่าวัสดุ">ค่าวัสดุ</option>
-                                    <option value="ค่าใช้สอย">ค่าใช้สอย</option>
-                                    <option value="ค่าตอบแทน">ค่าตอบแทน</option>
-                                    <option value="ค่าครุภัณฑ์">ค่าครุภัณฑ์</option>
+                                    <?php echo $expense_type_options; ?>
                                 </select>
                             </div>
                         </div>
@@ -349,16 +407,7 @@ require_once 'includes/navbar.php';
 <?php require_once 'includes/footer.php'; ?>
 
 <script>
-    const userRole = '<?php echo $_SESSION['role']; ?>';
-    const authorizedRoles = ['admin', 'ADMIN4'];
-
-    function checkPermissionAndOpenModal(action, data = null) {
-        if (!authorizedRoles.includes(userRole)) { alert('คุณไม่มีสิทธิ์จัดการข้อมูลในหน้านี้'); return; }
-        if (action === 'add') { openAddModal(); } else { openEditModal(data); }
-    }
-
     function confirmDelete(id) {
-        if (!authorizedRoles.includes(userRole)) { alert('คุณไม่มีสิทธิ์ลบข้อมูลในหน้านี้'); return; }
         if (confirm('ยืนยันการลบรายการ? ข้อมูลในหน้าอนุมัติจ่ายจะถูกลบด้วย')) { window.location.href = '?delete_id=' + id; }
     }
 
@@ -376,11 +425,35 @@ require_once 'includes/navbar.php';
         document.getElementById('modalTitle').innerHTML = 'แก้ไขข้อมูลสั่งจ่ายเงินนอกงบประมาณ ปีงบประมาณ <?php echo $active_year; ?>';
         
         document.getElementById('doc_no').value = data.doc_no || '';
-        document.getElementById('ref_withdraw_no').value = data.ref_withdraw_no || '';
-        document.getElementById('ref_petition_no').value = data.ref_petition_no || '';
+        
+        // จัดการ Option ที่ไม่ได้มีใน List ตั้งต้น ให้แสดงค่าขึ้นมาได้เมื่อกดแก้ไข
+        let refWithdraw = document.getElementById('ref_withdraw_no');
+        if(data.ref_withdraw_no) {
+            if(!Array.from(refWithdraw.options).some(opt => opt.value === data.ref_withdraw_no)) {
+                refWithdraw.add(new Option(data.ref_withdraw_no, data.ref_withdraw_no));
+            }
+        }
+        refWithdraw.value = data.ref_withdraw_no || '';
+
+        let refPetition = document.getElementById('ref_petition_no');
+        if(data.ref_petition_no) {
+            if(!Array.from(refPetition.options).some(opt => opt.value === data.ref_petition_no)) {
+                refPetition.add(new Option(data.ref_petition_no, data.ref_petition_no));
+            }
+        }
+        refPetition.value = data.ref_petition_no || '';
+
         document.getElementById('off_budget_type').value = data.off_budget_type || '';
         document.getElementById('description').value = data.description || '';
-        document.getElementById('expense_type').value = data.expense_type || '';
+
+        // [แก้ไข] จัดการ Dropdown สำหรับประเภทรายการจ่าย ให้แสดงข้อมูลเก่าได้เมื่อกดแก้ไข
+        let expSelect = document.getElementById('expense_type');
+        let expValue = data.expense_type || '';
+        if(expValue && !Array.from(expSelect.options).some(opt => opt.value === expValue)) {
+            expSelect.add(new Option(expValue, expValue));
+        }
+        expSelect.value = expValue;
+
         document.getElementById('amount').value = data.amount || '';
         document.getElementById('payee').value = data.payee || '';
 

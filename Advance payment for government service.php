@@ -13,20 +13,12 @@ $page_header = '<div class="d-flex justify-content-between">
                     <span>ปีงบประมาณที่ทำงาน: <strong>'.$active_year.'</strong></span>
                 </div>';
 
-// --- กำหนดกลุ่มสิทธิ์ที่มีอำนาจจัดการ (เฉพาะ admin และ ADMIN3) ---
-$authorized_roles = ['admin', 'ADMIN3'];
-
 // --------------------------------------------------------------------------------
 // --- ส่วน Logic การจัดการข้อมูล (CRUD) ---
 // --------------------------------------------------------------------------------
 
 // 1. ลบข้อมูล
 if (isset($_GET['delete_id'])) {
-    // ตรวจสอบสิทธิ์ก่อนลบ
-    if (!in_array($_SESSION['role'], $authorized_roles)) {
-        echo "<script>alert('คุณไม่มีสิทธิ์จัดการข้อมูลในหน้านี้'); window.location='Advance payment for government service.php';</script>";
-        exit();
-    }
     $id = $_GET['delete_id'];
     $stmt = $conn->prepare("DELETE FROM advance_service_payments WHERE id = ?");
     $stmt->bind_param("i", $id);
@@ -37,11 +29,6 @@ if (isset($_GET['delete_id'])) {
 
 // 2. เปลี่ยนสถานะ "อนุมัติ" (เลือกสถานะ เขียว/เหลือง/แดง)
 if (isset($_GET['toggle_approval_id']) && isset($_GET['set_status'])) {
-    // ตรวจสอบสิทธิ์ก่อนอนุมัติ
-    if (!in_array($_SESSION['role'], $authorized_roles)) {
-        echo "<script>alert('คุณไม่มีสิทธิ์อนุมัติข้อมูลในหน้านี้'); window.location='Advance payment for government service.php';</script>";
-        exit();
-    }
     $id = $_GET['toggle_approval_id'];
     $new_status = $_GET['set_status']; // รับค่าสถานะที่ส่งมาจาก Modal (pending, approved, rejected)
     
@@ -54,10 +41,6 @@ if (isset($_GET['toggle_approval_id']) && isset($_GET['set_status'])) {
 
 // 2.1 เปลี่ยนสถานะ "จ่ายเงิน" (เลือกสถานะ เขียว/เหลือง/แดง)
 if (isset($_GET['toggle_payment_id']) && isset($_GET['set_payment_status'])) {
-    if (!in_array($_SESSION['role'], $authorized_roles)) {
-        echo "<script>alert('คุณไม่มีสิทธิ์จัดการข้อมูลในหน้านี้'); window.location='Advance payment for government service.php';</script>";
-        exit();
-    }
     $id = $_GET['toggle_payment_id'];
     $new_status = $_GET['set_payment_status']; // paid, pending, unpaid
     
@@ -70,11 +53,6 @@ if (isset($_GET['toggle_payment_id']) && isset($_GET['set_payment_status'])) {
 
 // 3. เพิ่ม หรือ แก้ไขข้อมูล
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    // ตรวจสอบสิทธิ์ก่อนบันทึกหรือแก้ไข
-    if (!in_array($_SESSION['role'], $authorized_roles)) {
-        echo "<script>alert('คุณไม่มีสิทธิ์จัดการข้อมูลในหน้านี้'); window.location='Advance payment for government service.php';</script>";
-        exit();
-    }
     $pay_order = $_POST['pay_order'];
     $doc_date = $_POST['doc_date'];
     $description = $_POST['description'];
@@ -128,13 +106,7 @@ require_once 'includes/navbar.php';
 
 <div class="container-fluid pb-5 px-3">
     <div class="content-card">
-        <h2 class="page-title">จ่ายเงินทดรองราชการ ปีงบประมาณ <?php echo $active_year; ?></h2>
-
-        <div class="d-flex justify-content-end mb-2">
-            <button class="btn btn-add" onclick="checkAdminAction('add')">
-                + เพิ่มรายการ
-            </button>
-        </div>
+        <h2 class="page-title mb-4">จ่ายเงินทดรองราชการ ปีงบประมาณ <?php echo $active_year; ?></h2>
 
         <div class="table-responsive">
             <table class="table table-hover table-custom bg-white">
@@ -172,12 +144,12 @@ require_once 'includes/navbar.php';
                             echo "<td class='td-center'><button class='action-btn btn-detail' onclick='openDetailModal(".htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').")'><i class='fa-solid fa-list-ul'></i></button></td>";
                             
                             // เปลี่ยนเป็นเรียกฟังก์ชันเปิด Modal เลือกสีสถานะ
-                            echo "<td class='td-center'><a href='javascript:void(0)' onclick='checkAdminToggle(".$row['id'].")' title='".$app_text."'><div class='status-box ".$app_class."'></div></a></td>";
+                            echo "<td class='td-center'><a href='javascript:void(0)' onclick='openApprovalToggle(".$row['id'].")' title='".$app_text."'><div class='status-box ".$app_class."'></div></a></td>";
                             
                             // เปลี่ยนสถานะจ่ายเงินให้เรียกฟังก์ชันเปิด Modal 
-                            echo "<td class='td-center'><a href='javascript:void(0)' onclick='checkAdminPaymentToggle(".$row['id'].")' title='".$pay_text."'><div class='status-box ".$pay_class."'></div></a></td>";
+                            echo "<td class='td-center'><a href='javascript:void(0)' onclick='openPaymentToggle(".$row['id'].")' title='".$pay_text."'><div class='status-box ".$pay_class."'></div></a></td>";
                             
-                            echo "<td class='td-center'><button class='action-btn btn-edit' onclick='checkAdminAction(\"edit\", ".json_encode($row).")' title='บันทึกการจ่าย'><i class='fa-solid fa-pen'></i></button></td>";
+                            echo "<td class='td-center'><button class='action-btn btn-edit' onclick='openEditModal(".json_encode($row).")' title='บันทึก/แก้ไข'><i class='fa-solid fa-pen'></i></button></td>";
                             echo "</tr>";
                         }
                     } else {
@@ -278,59 +250,29 @@ require_once 'includes/navbar.php';
 <?php require_once 'includes/footer.php'; ?>
 
 <script>
-    const userRole = '<?php echo $_SESSION['role']; ?>';
-    const authRoles = ['admin', 'ADMIN3'];
-    let currentApprovalId = null; // เก็บ ID ปัจจุบันที่กำลังเปลี่ยนสถานะอนุมัติ
-    let currentPaymentId = null; // เก็บ ID ปัจจุบันที่กำลังเปลี่ยนสถานะจ่ายเงิน
+    let currentApprovalId = null;
+    let currentPaymentId = null;
 
-    function checkAdminAction(action, data = null) {
-        if (!authRoles.includes(userRole)) {
-            alert('คุณไม่มีสิทธิ์จัดการข้อมูลในหน้านี้');
-            return;
-        }
-        if (action === 'add') openAddModal();
-        else openEditModal(data);
-    }
-
-    // ฟังก์ชันจัดการคลิกกล่องสี อนุมัติ
-    function checkAdminToggle(id) {
-        if (!authRoles.includes(userRole)) {
-            alert('คุณไม่มีสิทธิ์อนุมัติข้อมูลในหน้านี้');
-            return;
-        }
+    function openApprovalToggle(id) {
         currentApprovalId = id;
         new bootstrap.Modal(document.getElementById('approvalStatusModal')).show();
     }
 
-    // ฟังก์ชันส่งค่าสถานะอนุมัติกลับไปประมวลผล
-    function submitApprovalStatus(status) {
+    function submitApprovalStatus(newStatus) {
         if (currentApprovalId !== null) {
-            window.location.href = `?toggle_approval_id=${currentApprovalId}&set_status=${status}`;
+            window.location.href = `?toggle_approval_id=${currentApprovalId}&set_status=${newStatus}`;
         }
     }
 
-    // ฟังก์ชันจัดการคลิกกล่องสี จ่ายเงิน
-    function checkAdminPaymentToggle(id) {
-        if (!authRoles.includes(userRole)) {
-            alert('คุณไม่มีสิทธิ์จัดการข้อมูลในหน้านี้');
-            return;
-        }
+    function openPaymentToggle(id) {
         currentPaymentId = id;
         new bootstrap.Modal(document.getElementById('paymentStatusModal')).show();
     }
 
-    // ฟังก์ชันส่งค่าสถานะจ่ายเงินกลับไปประมวลผล
-    function submitPaymentStatus(status) {
+    function submitPaymentStatus(newStatus) {
         if (currentPaymentId !== null) {
-            window.location.href = `?toggle_payment_id=${currentPaymentId}&set_payment_status=${status}`;
+            window.location.href = `?toggle_payment_id=${currentPaymentId}&set_payment_status=${newStatus}`;
         }
-    }
-
-    function openAddModal() {
-        document.getElementById('form_action').value = 'add';
-        document.getElementById('edit_id').value = '';
-        document.querySelector('#addModal form').reset();
-        new bootstrap.Modal(document.getElementById('addModal')).show();
     }
 
     function openEditModal(data) {
@@ -346,6 +288,7 @@ require_once 'includes/navbar.php';
         else if(data.payment_status == 'pending') document.getElementById('pay_pending').checked = true;
         else document.getElementById('pay_unpaid').checked = true;
         
+        document.getElementById('modalTitle').innerText = 'แก้ไขรายการจ่ายเงินทดรองราชการ';
         new bootstrap.Modal(document.getElementById('addModal')).show();
     }
 

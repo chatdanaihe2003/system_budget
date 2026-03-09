@@ -1,26 +1,15 @@
 <?php
-// [1. เรียกใช้ DB] (รวม Session, Check Login, Active Year, Date Functions มาให้แล้ว)
 require_once 'includes/db.php'; 
 
-// ตั้งค่าตัวแปรสำหรับ Header
 $page_title = "อนุมัติจ่ายเงิน - AMSS++";
 $current_page = basename($_SERVER['PHP_SELF']); 
 $page_header = 'อนุมัติจ่ายเงิน';
-
-// --- กำหนดกลุ่มสิทธิ์ที่มีอำนาจจัดการ (เฉพาะ admin และ ADMIN3) ---
-$authorized_roles = ['admin', 'ADMIN3'];
 
 // --------------------------------------------------------------------------------
 // --- Logic จัดการข้อมูล (CRUD) ---
 // --------------------------------------------------------------------------------
 
-// 1. ลบข้อมูล
 if (isset($_GET['delete_id'])) {
-    // ตรวจสอบสิทธิ์ก่อนลบ
-    if (!in_array($_SESSION['role'], $authorized_roles)) {
-        echo "<script>alert('คุณไม่มีสิทธิ์จะแก้ไข หรืออนุมัติในหน้านี้'); window.location='Approvedformaintypepayment.php';</script>";
-        exit();
-    }
     $id = $_GET['delete_id'];
     $stmt = $conn->prepare("DELETE FROM approved_main_payments WHERE id = ?");
     $stmt->bind_param("i", $id);
@@ -29,26 +18,14 @@ if (isset($_GET['delete_id'])) {
     exit();
 }
 
-// 2. เปลี่ยนสถานะ (เลือกสถานะ เขียว/เหลือง/แดง)
 if (isset($_GET['toggle_status_id']) && isset($_GET['set_status'])) {
-    // ตรวจสอบสิทธิ์ก่อนเปลี่ยนสถานะอนุมัติ
-    if (!in_array($_SESSION['role'], $authorized_roles)) {
-        echo "<script>alert('คุณไม่มีสิทธิ์จะแก้ไข หรืออนุมัติในหน้านี้'); window.location='Approvedformaintypepayment.php';</script>";
-        exit();
-    }
     $id = $_GET['toggle_status_id'];
-    $new_status = $_GET['set_status']; // ค่าที่ส่งมาคือ pending, approved, หรือ rejected
+    $new_status = $_GET['set_status']; 
     
-    // อัปเดตสถานะในตารางหลัก (approved_main_payments)
     $stmt = $conn->prepare("UPDATE approved_main_payments SET status = ? WHERE id = ?");
     $stmt->bind_param("si", $new_status, $id);
     $stmt->execute();
 
-    // =====================================================================================
-    // --- ส่วนเพิ่มใหม่: จัดการส่งข้อมูลไปตัดยอดที่หน้าทะเบียนรับเงินต่างๆ เมื่ออนุมัติ ---
-    // =====================================================================================
-    
-    // ดึงข้อมูลรายการที่เพิ่งเปลี่ยนสถานะ
     $stmt_get = $conn->prepare("SELECT * FROM approved_main_payments WHERE id = ?");
     $stmt_get->bind_param("i", $id);
     $stmt_get->execute();
@@ -60,11 +37,10 @@ if (isset($_GET['toggle_status_id']) && isset($_GET['set_status'])) {
         $b_year = $row_data['budget_year'];
         $d_date = $row_data['doc_date'];
         $d_no = $row_data['doc_no'];
-        $desc_deduct = "(ตัดจ่าย) " . $row_data['description']; // เติมคำว่าตัดจ่าย
-        $neg_amount = $row_data['amount'] * -1; // หักยอดต้องเป็นค่าติดลบ
+        $desc_deduct = "(ตัดจ่าย) " . $row_data['description']; 
+        $neg_amount = $row_data['amount'] * -1; 
         $t_type = "โอนเงิน"; 
 
-        // เลือกตารางปลายทาง ตามประเภทเงิน
         $target_table = "";
         if ($row_data['payment_type'] == 'เงินงบประมาณ') {
             $target_table = 'receive_budget';
@@ -74,24 +50,19 @@ if (isset($_GET['toggle_status_id']) && isset($_GET['set_status'])) {
             $target_table = 'receive_national';
         }
 
-        // หากมีตารางปลายทางตรงตามเงื่อนไข ให้ไปทำรายการ
         if ($target_table != "") {
             if ($new_status == 'approved') {
-                // หากเปลี่ยนเป็น "สีเขียว" -> นำข้อมูลไปเพิ่มในตารางรับเงินที่เกี่ยวข้อง
-                // เช็คก่อนว่ามีข้อมูลถูกตัดไปหรือยัง จะได้ไม่ซ้ำซ้อน
                 $stmt_check = $conn->prepare("SELECT id FROM $target_table WHERE description = ? AND budget_year = ? AND doc_no = ?");
                 $stmt_check->bind_param("sis", $desc_deduct, $b_year, $d_no);
                 $stmt_check->execute();
                 
                 if ($stmt_check->get_result()->num_rows == 0) {
-                    // หาเลขที่ใบงวดถัดไปในตารางเป้าหมาย
                     $stmt_max = $conn->prepare("SELECT MAX(receive_order) as m_order FROM $target_table WHERE budget_year = ?");
                     $stmt_max->bind_param("i", $b_year);
                     $stmt_max->execute();
                     $r_max = $stmt_max->get_result()->fetch_assoc();
                     $rec_order = ($r_max['m_order'] ?? 0) + 1;
 
-                    // บันทึกข้อมูลลงฐานข้อมูลเป้าหมาย
                     $stmt_ins = $conn->prepare("INSERT INTO $target_table (budget_year, receive_order, doc_date, doc_no, description, transaction_type, amount) VALUES (?, ?, ?, ?, ?, ?, ?)");
                     if ($stmt_ins) {
                         $stmt_ins->bind_param("iissssd", $b_year, $rec_order, $d_date, $d_no, $desc_deduct, $t_type, $neg_amount);
@@ -99,7 +70,6 @@ if (isset($_GET['toggle_status_id']) && isset($_GET['set_status'])) {
                     }
                 }
             } else {
-                // หากเปลี่ยนกลับเป็น "สีเหลือง" หรือ "สีแดง" -> ลบข้อมูลออกจากตารางรับเงินที่เกี่ยวข้อง
                 $stmt_del = $conn->prepare("DELETE FROM $target_table WHERE description = ? AND budget_year = ? AND doc_no = ?");
                 if ($stmt_del) {
                     $stmt_del->bind_param("sis", $desc_deduct, $b_year, $d_no);
@@ -108,44 +78,41 @@ if (isset($_GET['toggle_status_id']) && isset($_GET['set_status'])) {
             }
         }
     }
-    // =====================================================================================
 
     header("Location: Approvedformaintypepayment.php");
     exit();
 }
 
-// 3. เพิ่ม หรือ แก้ไขข้อมูล
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    // ตรวจสอบสิทธิ์ก่อนบันทึกหรือแก้ไข
-    if (!in_array($_SESSION['role'], $authorized_roles)) {
-        echo "<script>alert('คุณไม่มีสิทธิ์จะแก้ไข หรืออนุมัติในหน้านี้'); window.location='Approvedformaintypepayment.php';</script>";
-        exit();
-    }
-    $pay_order = $_POST['pay_order'];
-    $doc_date = $_POST['doc_date'];
-    $doc_no = $_POST['doc_no'];
-    $ref_withdraw_no = $_POST['ref_withdraw_no'];
-    $ref_petition_no = $_POST['ref_petition_no'];
-    $description = $_POST['description'];
-    $amount = $_POST['amount'];
-    $payment_type = $_POST['payment_type'];
-    $status = $_POST['status'];
+    $pay_order = $_POST['pay_order'] ?? 0;
+    
+    $d_day = $_POST['d_day'] ?? date('d');
+    $d_month = $_POST['d_month'] ?? date('m');
+    $d_year = $_POST['d_year'] ?? date('Y');
+    $real_year = (int)$d_year > 2500 ? (int)$d_year - 543 : $d_year;
+    $doc_date = sprintf("%04d-%02d-%02d", $real_year, $d_month, $d_day);
+    
+    $doc_no = $_POST['doc_no'] ?? '';
+    $ref_withdraw_no = $_POST['ref_withdraw_no'] ?? '';
+    $payment_type = $_POST['payment_type'] ?? '';
+    $description = $_POST['description'] ?? '';
+    $expense_type = $_POST['expense_type'] ?? '';
+    $amount = $_POST['amount'] ?? 0;
+    $payee = $_POST['payee'] ?? '';
+    $status = $_POST['status'] ?? 'pending';
 
-    if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        $stmt = $conn->prepare("INSERT INTO approved_main_payments (budget_year, pay_order, doc_date, doc_no, ref_withdraw_no, ref_petition_no, description, amount, payment_type, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("iisssssdss", $active_year, $pay_order, $doc_date, $doc_no, $ref_withdraw_no, $ref_petition_no, $description, $amount, $payment_type, $status);
-        $stmt->execute();
-    } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
+    $ref_petition_no = '';
+
+    if (isset($_POST['action']) && $_POST['action'] == 'edit') {
         $id = $_POST['edit_id'];
-        $stmt = $conn->prepare("UPDATE approved_main_payments SET pay_order=?, doc_date=?, doc_no=?, ref_withdraw_no=?, ref_petition_no=?, description=?, amount=?, payment_type=?, status=? WHERE id=?");
-        $stmt->bind_param("isssssdssi", $pay_order, $doc_date, $doc_no, $ref_withdraw_no, $ref_petition_no, $description, $amount, $payment_type, $status, $id);
+        $stmt = $conn->prepare("UPDATE approved_main_payments SET doc_date=?, doc_no=?, ref_withdraw_no=?, description=?, amount=?, payment_type=?, status=? WHERE id=?");
+        $stmt->bind_param("ssssdssi", $doc_date, $doc_no, $ref_withdraw_no, $description, $amount, $payment_type, $status, $id);
         $stmt->execute();
     }
     header("Location: Approvedformaintypepayment.php");
     exit();
 }
 
-// --- ดึงข้อมูลเฉพาะปี Active ---
 $sql_data = "SELECT * FROM approved_main_payments WHERE budget_year = ? ORDER BY pay_order ASC";
 $stmt_data = $conn->prepare($sql_data);
 $stmt_data->bind_param("i", $active_year);
@@ -154,6 +121,12 @@ $result_data = $stmt_data->get_result();
 
 require_once 'includes/header.php';
 require_once 'includes/navbar.php';
+
+$thai_months = [
+    "01" => "มกราคม", "02" => "กุมภาพันธ์", "03" => "มีนาคม", "04" => "เมษายน",
+    "05" => "พฤษภาคม", "06" => "มิถุนายน", "07" => "กรกฎาคม", "08" => "สิงหาคม",
+    "09" => "กันยายน", "10" => "ตุลาคม", "11" => "พฤศจิกายน", "12" => "ธันวาคม"
+];
 ?>
 
 <style>
@@ -164,23 +137,19 @@ require_once 'includes/navbar.php';
     .legend-container { margin-top: 20px; font-size: 0.85rem; }
     .legend-item { display: flex; align-items: center; margin-bottom: 5px; }
     .legend-box { width: 14px; height: 14px; margin-right: 8px; border: 1px solid #ccc; }
-    /* เปลี่ยนสีพื้นหลังเป็นขาวสะอาดเหมือนหน้าสั่งจ่าย */
-    .form-white-bg { background-color: #ffffff; padding: 25px; border-radius: 8px; border: 1px solid #dee2e6; }
-    .form-label-custom { font-weight: bold; text-align: right; font-size: 0.9rem; color: #495057; }
-    .modal-header { border-bottom: 1px solid #dee2e6; background-color: #f8f9fa; border-top-left-radius: 12px; border-top-right-radius: 12px; }
-    .modal-title-custom { color: #333; font-weight: bold; width: 100%; text-align: center; font-size: 1.3rem;}
+    
+    .form-white-bg { background-color: #ffffff; padding: 25px 40px; border-radius: 8px; border: 1px solid #dee2e6; }
+    .form-label-custom { font-weight: normal; text-align: right; font-size: 0.95rem; color: #000; padding-top: 5px; }
+    .modal-header { border-bottom: 1px solid #dee2e6; background-color: #ffffff; border-top-left-radius: 12px; border-top-right-radius: 12px; }
+    .modal-title-custom { color: #006666; font-weight: bold; width: 100%; text-align: center; font-size: 1.2rem;}
     .modal-content { border-radius: 12px; border: none; box-shadow: 0 10px 30px rgba(0,0,0,0.15); }
+    .btn-form { padding: 4px 20px; background-color: #e9ecef; border: 1px solid #ccc; color: #333; border-radius: 4px; font-size: 0.9rem; }
+    .btn-form:hover { background-color: #d3d9df; }
 </style>
 
 <div class="container-fluid pb-5 px-3">
     <div class="content-card">
-        <h2 class="page-title">อนุมัติจ่ายเงิน ปีงบประมาณ <?php echo $active_year; ?></h2>
-
-        <div class="d-flex justify-content-end mb-2">
-            <button class="btn btn-add" onclick="checkAdminAction('add')">
-                + เพิ่มรายการ
-            </button>
-        </div>
+        <h2 class="page-title mb-4">อนุมัติจ่ายเงิน ปีงบประมาณ <?php echo $active_year; ?></h2>
 
         <div class="table-responsive">
             <table class="table table-hover table-custom bg-white">
@@ -218,8 +187,8 @@ require_once 'includes/navbar.php';
                             echo "<td class='td-right'>" . number_format($row['amount'], 2) . "</td>";
                             echo "<td class='td-center'>" . htmlspecialchars($row['payment_type']) . "</td>";
                             echo "<td class='td-center'><button class='action-btn btn-detail' onclick='openDetailModal(".htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').")'><i class='fa-solid fa-list-ul'></i></button></td>";
-                            echo "<td class='td-center'><a href='javascript:void(0)' onclick='checkAdminToggle(".$row['id'].", \"".$row['status']."\")' title='".$status_text."'><div class='status-box ".$status_class."'></div></a></td>";
-                            echo "<td class='td-center'><button class='action-btn btn-edit' onclick='checkAdminAction(\"edit\", ".json_encode($row).")'><i class='fa-solid fa-pen'></i></button></td>";
+                            echo "<td class='td-center'><a href='javascript:void(0)' onclick='openStatusModal(".$row['id'].", \"".$row['status']."\")' title='".$status_text."'><div class='status-box ".$status_class."'></div></a></td>";
+                            echo "<td class='td-center'><button class='action-btn btn-edit' onclick='openEditModal(".json_encode($row).")'><i class='fa-solid fa-pen'></i></button></td>";
                             echo "</tr>";
                         }
                     } else {
@@ -240,35 +209,115 @@ require_once 'includes/navbar.php';
 
 <div class="modal fade" id="addModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header d-block"><h5 class="modal-title-custom" id="modalTitle">ลงทะเบียนอนุมัติจ่าย</h5></div>
-            <div class="modal-body mx-3 mb-3">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header d-block pb-0 border-0">
+                <h5 class="modal-title-custom text-teal" id="modalTitle">แก้ไขการอนุมัติจ่ายเงิน ปีงบประมาณ <?php echo $active_year; ?></h5>
+            </div>
+            <div class="modal-body mx-4 mb-4 pt-2">
                 <div class="form-white-bg">
                     <form action="Approvedformaintypepayment.php" method="POST">
-                        <input type="hidden" name="action" id="form_action" value="add">
+                        <input type="hidden" name="action" id="form_action" value="edit">
                         <input type="hidden" name="edit_id" id="edit_id">
-                        <div class="row mb-3"><div class="col-md-3 form-label-custom">ที่</div><div class="col-md-3"><input type="number" name="pay_order" id="pay_order" class="form-control form-control-sm" required></div></div>
-                        <div class="row mb-3"><div class="col-md-3 form-label-custom">วดป</div><div class="col-md-4"><input type="date" name="doc_date" id="doc_date" class="form-control form-control-sm" value="<?php echo date('Y-m-d'); ?>" required></div></div>
-                        <div class="row mb-3"><div class="col-md-3 form-label-custom">ที่เอกสาร</div><div class="col-md-4"><input type="text" name="doc_no" id="doc_no" class="form-control form-control-sm" required></div></div>
-                        <div class="row mb-3"><div class="col-md-3 form-label-custom">อ้างอิงขอเบิก</div><div class="col-md-4"><input type="text" name="ref_withdraw_no" id="ref_withdraw_no" class="form-control form-control-sm"></div></div>
-                        <div class="row mb-3"><div class="col-md-3 form-label-custom">อ้างอิงฎีกา</div><div class="col-md-4"><input type="text" name="ref_petition_no" id="ref_petition_no" class="form-control form-control-sm"></div></div>
-                        <div class="row mb-3"><div class="col-md-3 form-label-custom">รายการ</div><div class="col-md-9"><input type="text" name="description" id="description" class="form-control form-control-sm" required></div></div>
-                        <div class="row mb-3"><div class="col-md-3 form-label-custom">จำนวนเงิน</div><div class="col-md-4"><input type="number" step="0.01" name="amount" id="amount" class="form-control form-control-sm" required></div></div>
-                        <div class="row mb-3"><div class="col-md-3 form-label-custom">ประเภทเงิน</div><div class="col-md-4">
-                            <select name="payment_type" id="payment_type" class="form-select form-select-sm">
-                                <option value="เงินงบประมาณ">เงินงบประมาณ</option>
-                                <option value="เงินนอกงบประมาณ">เงินนอกงบประมาณ</option>
-                                <option value="เงินรายได้แผ่นดิน">เงินรายได้แผ่นดิน</option>
-                            </select>
-                        </div></div>
-                        <div class="row mb-3"><div class="col-md-3 form-label-custom">สถานะ</div><div class="col-md-4">
-                            <select name="status" id="status" class="form-select form-select-sm">
-                                <option value="pending">รอการอนุมัติ</option>
-                                <option value="approved">อนุมัติ</option>
-                                <option value="rejected">ไม่อนุมัติ</option>
-                            </select>
-                        </div></div>
-                        <div class="text-center mt-4 pt-3 border-top"><button type="submit" class="btn btn-primary px-4 me-2">ตกลง</button><button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">ย้อนกลับ</button></div>
+                        
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">วันที่</div>
+                            <div class="col-md-2">
+                                <select name="d_day" id="d_day" class="form-select form-select-sm">
+                                    <?php for($i=1; $i<=31; $i++) { echo "<option value='".sprintf("%02d", $i)."'>$i</option>"; } ?>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">เดือน</div>
+                            <div class="col-md-3">
+                                <select name="d_month" id="d_month" class="form-select form-select-sm">
+                                    <?php foreach($thai_months as $num => $name) { echo "<option value='$num'>$name</option>"; } ?>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">ปี</div>
+                            <div class="col-md-3">
+                                <input type="number" name="d_year" id="d_year" class="form-control form-control-sm" value="<?php echo $active_year; ?>" required>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">ที่เอกสาร</div>
+                            <div class="col-md-4">
+                                <input type="text" name="doc_no" id="doc_no" class="form-control form-control-sm" required>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">อ้างอิงทะเบียนขอเบิก/ขอยืมเงิน</div>
+                            <div class="col-md-7">
+                                <select name="ref_withdraw_no" id="ref_withdraw_no" class="form-select form-select-sm">
+                                    <option value="">เลือก</option>
+                                    <option value="316 ค่าจ้างจัดทำเอกสารกลุ่มนโยบายและแผน">316 ค่าจ้างจัดทำเอกสารกลุ่มนโยบายและแผน</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">ประเภทของเงิน</div>
+                            <div class="col-md-4">
+                                <select name="payment_type" id="payment_type" class="form-select form-select-sm">
+                                    <option value="เงินงบประมาณ">เงินงบประมาณ</option>
+                                    <option value="เงินนอกงบประมาณ">เงินนอกงบประมาณ</option>
+                                    <option value="เงินรายได้แผ่นดิน">เงินรายได้แผ่นดิน</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">รายการจ่าย</div>
+                            <div class="col-md-8">
+                                <input type="text" name="description" id="description" class="form-control form-control-sm" required>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">ประเภทรายการจ่าย</div>
+                            <div class="col-md-4">
+                                <select name="expense_type" id="expense_type" class="form-select form-select-sm">
+                                    <option value="">เลือก</option>
+                                    <option value="ค่าใช้สอย">ค่าใช้สอย</option>
+                                    <option value="ค่าวัสดุ">ค่าวัสดุ</option>
+                                    <option value="ค่าตอบแทน">ค่าตอบแทน</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4 form-label-custom">จำนวนเงิน</div>
+                            <div class="col-md-3">
+                                <input type="number" step="0.01" name="amount" id="amount" class="form-control form-control-sm" required>
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3 align-items-center">
+                            <div class="col-md-4 form-label-custom">ผู้รับเงิน</div>
+                            <div class="col-md-6">
+                                <input type="text" name="payee" id="payee" class="form-control form-control-sm">
+                            </div>
+                        </div>
+
+                        <div class="row mb-3 align-items-center justify-content-center">
+                            <div class="col-md-6 text-center" style="background-color: #f1f3f5; padding: 15px; border-radius: 8px;">
+                                <div class="form-label-custom d-block mb-2" style="text-align: center;">ส่วนของการอนุมัติ:</div>
+                                <select name="status" id="status" class="form-select form-select-sm mx-auto" style="width: 200px;">
+                                    <option value="pending">รอการอนุมัติ</option>
+                                    <option value="approved">การอนุมัติ</option>
+                                    <option value="rejected">ไม่อนุมัติ</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="text-center mt-3 pt-2">
+                            <button type="submit" class="btn-form me-2">ตกลง</button>
+                            <button type="button" class="btn-form" data-bs-dismiss="modal">ย้อนกลับ</button>
+                        </div>
                     </form>
                 </div>
             </div>
@@ -316,55 +365,46 @@ require_once 'includes/navbar.php';
 <?php require_once 'includes/footer.php'; ?>
 
 <script>
-    const userRole = '<?php echo $_SESSION['role']; ?>';
-    const authorizedRoles = ['admin', 'ADMIN3'];
-    let currentStatusId = null; // ตัวแปรเก็บ ID ที่กำลังจะเปลี่ยนสถานะ
+    let currentStatusId = null;
 
-    function checkAdminAction(action, data = null) {
-        if (!authorizedRoles.includes(userRole)) {
-            alert('คุณไม่มีสิทธิ์จะแก้ไข หรืออนุมัติในหน้านี้');
-            return;
-        }
-        if (action === 'add') openAddModal();
-        else openEditModal(data);
-    }
-
-    // ฟังก์ชันเมื่อคลิกที่กล่องสถานะ
-    function checkAdminToggle(id, currentStatus) {
-        if (!authorizedRoles.includes(userRole)) {
-            alert('คุณไม่มีสิทธิ์จะแก้ไข หรืออนุมัติในหน้านี้');
-            return;
-        }
-        currentStatusId = id; // เก็บ ID ไว้ใช้ตอนเลือกสี
+    function openStatusModal(id, currentStatus) {
+        currentStatusId = id; 
         new bootstrap.Modal(document.getElementById('statusModal')).show();
     }
 
-    // ฟังก์ชันส่งค่าสถานะที่เลือกกลับไปที่ PHP
     function submitSetStatus(newStatus) {
         if (currentStatusId !== null) {
             window.location.href = `?toggle_status_id=${currentStatusId}&set_status=${newStatus}`;
         }
     }
 
-    function openAddModal() {
-        document.getElementById('form_action').value = 'add';
-        document.getElementById('edit_id').value = '';
-        document.querySelector('#addModal form').reset();
-        new bootstrap.Modal(document.getElementById('addModal')).show();
-    }
-
     function openEditModal(data) {
         document.getElementById('form_action').value = 'edit';
         document.getElementById('edit_id').value = data.id;
-        document.getElementById('pay_order').value = data.pay_order;
-        document.getElementById('doc_date').value = data.doc_date;
-        document.getElementById('doc_no').value = data.doc_no;
-        document.getElementById('ref_withdraw_no').value = data.ref_withdraw_no;
-        document.getElementById('ref_petition_no').value = data.ref_petition_no;
-        document.getElementById('description').value = data.description;
-        document.getElementById('amount').value = data.amount;
-        document.getElementById('payment_type').value = data.payment_type;
-        document.getElementById('status').value = data.status;
+        document.getElementById('modalTitle').innerHTML = 'แก้ไขการอนุมัติจ่ายเงิน ปีงบประมาณ <?php echo $active_year; ?>';
+        
+        if (data.doc_date) {
+            let parts = data.doc_date.split('-');
+            if(parts.length === 3) {
+                document.getElementById('d_year').value = parseInt(parts[0]) + 543;
+                document.getElementById('d_month').value = parts[1];
+                document.getElementById('d_day').value = parts[2];
+            }
+        }
+        
+        document.getElementById('doc_no').value = data.doc_no || '';
+        
+        let refSelect = document.getElementById('ref_withdraw_no');
+        if(data.ref_withdraw_no && !Array.from(refSelect.options).some(opt => opt.value === data.ref_withdraw_no)) {
+            refSelect.add(new Option(data.ref_withdraw_no, data.ref_withdraw_no));
+        }
+        refSelect.value = data.ref_withdraw_no || '';
+
+        document.getElementById('description').value = data.description || '';
+        document.getElementById('amount').value = data.amount || '';
+        document.getElementById('payment_type').value = data.payment_type || 'เงินงบประมาณ';
+        document.getElementById('status').value = data.status || 'pending';
+        
         new bootstrap.Modal(document.getElementById('addModal')).show();
     }
 

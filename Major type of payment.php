@@ -8,20 +8,12 @@ $current_page = basename($_SERVER['PHP_SELF']);
 // ชื่อหน้าบนแถบสีทอง
 $page_header = 'จ่ายเงินประเภทหลัก';
 
-// --- กำหนดกลุ่มสิทธิ์ที่มีอำนาจจัดการ (เฉพาะ admin และ ADMIN3) ---
-$authorized_roles = ['admin', 'ADMIN3'];
-
 // --------------------------------------------------------------------------------
 // --- Logic จัดการข้อมูล (CRUD) ---
 // --------------------------------------------------------------------------------
 
 // 1. ลบข้อมูล
 if (isset($_GET['delete_id'])) {
-    // ตรวจสอบสิทธิ์ก่อนลบ
-    if (!in_array($_SESSION['role'], $authorized_roles)) {
-        echo "<script>alert('คุณไม่มีสิทธิ์ลบข้อมูลในหน้านี้'); window.location='Major type of payment.php';</script>";
-        exit();
-    }
     $id = $_GET['delete_id'];
     $stmt = $conn->prepare("DELETE FROM major_payments WHERE id = ?");
     $stmt->bind_param("i", $id);
@@ -32,11 +24,6 @@ if (isset($_GET['delete_id'])) {
 
 // 2. เปลี่ยนสถานะ "อนุมัติ" (เลือกสถานะ เขียว/เหลือง/แดง)
 if (isset($_GET['toggle_approval_id']) && isset($_GET['set_status'])) {
-    // ตรวจสอบสิทธิ์ก่อนอนุมัติ
-    if (!in_array($_SESSION['role'], $authorized_roles)) {
-        echo "<script>alert('คุณไม่มีสิทธิ์อนุมัติในหน้านี้'); window.location='Major type of payment.php';</script>";
-        exit();
-    }
     $id = $_GET['toggle_approval_id'];
     $new_status = $_GET['set_status']; 
 
@@ -49,10 +36,6 @@ if (isset($_GET['toggle_approval_id']) && isset($_GET['set_status'])) {
 
 // 2.1 เปลี่ยนสถานะ "จ่ายเงิน" (เลือกสถานะ เขียว/เหลือง/แดง)
 if (isset($_GET['toggle_payment_id']) && isset($_GET['set_status'])) {
-    if (!in_array($_SESSION['role'], $authorized_roles)) {
-        echo "<script>alert('คุณไม่มีสิทธิ์จัดการข้อมูลในหน้านี้'); window.location='Major type of payment.php';</script>";
-        exit();
-    }
     $id = $_GET['toggle_payment_id'];
     $new_status = $_GET['set_status']; 
 
@@ -65,12 +48,6 @@ if (isset($_GET['toggle_payment_id']) && isset($_GET['set_status'])) {
 
 // 3. เพิ่ม หรือ แก้ไขข้อมูล
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    // ตรวจสอบสิทธิ์ก่อนเพิ่มหรือแก้ไข
-    if (!in_array($_SESSION['role'], $authorized_roles)) {
-        echo "<script>alert('คุณไม่มีสิทธิ์จัดการข้อมูลในหน้านี้'); window.location='Major type of payment.php';</script>";
-        exit();
-    }
-
     $pay_order = $_POST['pay_order'];
     $doc_date = $_POST['doc_date'];
     $description = $_POST['description'];
@@ -125,13 +102,7 @@ require_once 'includes/navbar.php';
 
 <div class="container-fluid pb-5 px-3">
     <div class="content-card">
-        <h2 class="page-title">จ่ายเงินประเภทหลัก ปีงบประมาณ <?php echo $active_year; ?></h2>
-
-        <div class="d-flex justify-content-end mb-2">
-            <button class="btn btn-add" onclick="checkAdminAction('add')">
-                <i class="fa-solid fa-plus me-1"></i> เพิ่มรายการ
-            </button>
-        </div>
+        <h2 class="page-title mb-4">จ่ายเงินประเภทหลัก ปีงบประมาณ <?php echo $active_year; ?></h2>
 
         <div class="table-responsive">
             <table class="table table-hover table-custom bg-white">
@@ -291,20 +262,16 @@ require_once 'includes/navbar.php';
 <?php require_once 'includes/footer.php'; ?>
 
 <script>
-    const userRole = '<?php echo $_SESSION['role']; ?>';
-    const authorizedRoles = ['admin', 'ADMIN3'];
     let currentApprovalId = null;
     let currentPaymentId = null;
 
+    // ลบการเช็คสิทธิ์ออก ให้กดทำงานได้เลย
     function checkAdminAction(action, data = null) {
-        if (!authorizedRoles.includes(userRole)) { alert('คุณไม่มีสิทธิ์จัดการข้อมูลในหน้านี้'); return; }
         if (action === 'add') openAddModal();
         else openEditModal(data);
     }
 
-    // ฟังก์ชันจัดการปุ่มกล่องสี อนุมัติ
     function checkAdminApprovalToggle(id) {
-        if (!authorizedRoles.includes(userRole)) { alert('คุณไม่มีสิทธิ์อนุมัติในหน้านี้'); return; }
         currentApprovalId = id;
         new bootstrap.Modal(document.getElementById('approvalStatusModal')).show();
     }
@@ -315,9 +282,7 @@ require_once 'includes/navbar.php';
         }
     }
 
-    // ฟังก์ชันจัดการปุ่มกล่องสี จ่ายเงิน
     function checkAdminPaymentToggle(id) {
-        if (!authorizedRoles.includes(userRole)) { alert('คุณไม่มีสิทธิ์จัดการข้อมูลในหน้านี้'); return; }
         currentPaymentId = id;
         new bootstrap.Modal(document.getElementById('paymentStatusModal')).show();
     }

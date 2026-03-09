@@ -8,22 +8,160 @@ $current_page = basename($_SERVER['PHP_SELF']);
 // ชื่อหน้าบนแถบสีทอง (หรือแถบสถานะ)
 $page_header = 'รายงานการจัดสรรงบประมาณ';
 
-// --- ส่วนการดึงข้อมูลและค้นหา ---
-$search = isset($_GET['search']) ? $_GET['search'] : '';
+// --- ส่วนการดึงข้อมูลและค้นหาจากทั้ง 3 ตารางมารวมกัน ---
+$search = isset($_GET['search']) ? trim($_GET['search']) : '';
+$projects = []; // อาร์เรย์สำหรับเก็บข้อมูลที่จัดกลุ่ม
 
-if ($search != "") {
-    // ถ้ามีการค้นหา ให้กรองด้วย code (รหัสโครงการ)
-    $search_param = "%" . $search . "%";
-    $sql_data = "SELECT * FROM budget_allocation_reports WHERE code LIKE ? ORDER BY code ASC, activity_name ASC";
-    $stmt = $conn->prepare($sql_data);
-    $stmt->bind_param("s", $search_param);
-    $stmt->execute();
-    $result_data = $stmt->get_result();
-} else {
-    // ถ้าไม่มีการค้นหา ให้ดึงทั้งหมดตามปกติ
-    $sql_data = "SELECT * FROM budget_allocation_reports ORDER BY code ASC, activity_name ASC";
-    $result_data = $conn->query($sql_data);
+// 1. ดึงข้อมูลโครงการหลักจากหน้า Projectoutcomes (ตาราง project_outcomes)
+$check_po = $conn->query("SHOW TABLES LIKE 'project_outcomes'");
+if ($check_po && $check_po->num_rows > 0) {
+    $sql_po = "SELECT * FROM project_outcomes WHERE budget_year = ?";
+    if ($search != "") {
+        $search_param = "%" . $search . "%";
+        $sql_po .= " AND (project_code LIKE ? OR project_name LIKE ?)";
+        $stmt_po = $conn->prepare($sql_po);
+        $stmt_po->bind_param("iss", $active_year, $search_param, $search_param);
+    } else {
+        $stmt_po = $conn->prepare($sql_po);
+        $stmt_po->bind_param("i", $active_year);
+    }
+    
+    if ($stmt_po) {
+        $stmt_po->execute();
+        $res_po = $stmt_po->get_result();
+        while ($row = $res_po->fetch_assoc()) {
+            $code = trim($row['project_code'] ?? '');
+            $name = trim($row['project_name'] ?? '');
+            
+            // สร้าง Key เพื่อจัดกลุ่ม ถ้ารหัสไม่มีก็ใช้ชื่อ ถ้าไม่มีทั้งคู่ใช้อันอื่นแทน (ป้องกันข้อมูลหาย)
+            $key = ($code !== '') ? $code : 'NO_CODE_' . $name;
+            if ($key === 'NO_CODE_') $key = 'NO_CODE_GEN_' . $row['id'];
+            
+            if (!isset($projects[$key])) {
+                $projects[$key] = [
+                    'code' => $code !== '' ? $code : '-',
+                    'name' => $name !== '' ? $name : '-',
+                    'responsible' => '-', // เว้นไว้เนื่องจากยังไม่มีฟิลด์นี้ในฐานข้อมูล
+                    'total_budget' => floatval($row['budget_amount'] ?? 0),
+                    'activities' => []
+                ];
+            }
+        }
+    }
 }
+
+// 2. ดึงข้อมูลกิจกรรมย่อยจากหน้า Budgetallocation (ตาราง budget_allocations)
+$check_ba = $conn->query("SHOW TABLES LIKE 'budget_allocations'");
+if ($check_ba && $check_ba->num_rows > 0) {
+    $sql_ba = "SELECT * FROM budget_allocations WHERE budget_year = ?";
+    if ($search != "") {
+        $search_param = "%" . $search . "%";
+        $sql_ba .= " AND (project_code LIKE ? OR project_name LIKE ? OR description LIKE ?)";
+        $stmt_ba = $conn->prepare($sql_ba);
+        $stmt_ba->bind_param("isss", $active_year, $search_param, $search_param, $search_param);
+    } else {
+        $stmt_ba = $conn->prepare($sql_ba);
+        $stmt_ba->bind_param("i", $active_year);
+    }
+    
+    if ($stmt_ba) {
+        $stmt_ba->execute();
+        $res_ba = $stmt_ba->get_result();
+        while ($row = $res_ba->fetch_assoc()) {
+            $code = trim($row['project_code'] ?? '');
+            $name = trim($row['project_name'] ?? '');
+            
+            $key = ($code !== '') ? $code : 'NO_CODE_' . $name;
+            if ($key === 'NO_CODE_') $key = 'NO_CODE_BA_' . $row['id'];
+            
+            // ถ้าไม่มีโครงการนี้อยู่ ให้สร้างขึ้นมาใหม่เพื่อรองรับกิจกรรม
+            if (!isset($projects[$key])) {
+                $projects[$key] = [
+                    'code' => $code !== '' ? $code : '-',
+                    'name' => $name !== '' ? $name : (!empty($row['description']) ? $row['description'] : '-'),
+                    'responsible' => '-',
+                    'total_budget' => floatval($row['budget_amount'] ?? 0),
+                    'activities' => []
+                ];
+            }
+            
+            // ถ้าตารางหลักไม่มีงบ แต่ตารางนี้มีงบหลัก ให้ดึงมาใส่
+            if ($projects[$key]['total_budget'] == 0 && floatval($row['budget_amount'] ?? 0) > 0) {
+                $projects[$key]['total_budget'] = floatval($row['budget_amount']);
+            }
+            
+            // เพิ่มกิจกรรมย่อย
+            if (!empty($row['description']) || floatval($row['amount'] ?? 0) > 0) {
+                $projects[$key]['activities'][] = [
+                    'activity_name' => !empty($row['description']) ? $row['description'] : 'รายการจัดสรร',
+                    'budget_amount' => floatval($row['amount'] ?? 0),
+                    'fund_source' => !empty($row['fund_source']) ? $row['fund_source'] : '-'
+                ];
+            }
+        }
+    }
+}
+
+// 3. ดึงข้อมูลจากหน้า Check budget allocation (ตาราง check_budget_allocations)
+$check_cba = $conn->query("SHOW TABLES LIKE 'check_budget_allocations'");
+if ($check_cba && $check_cba->num_rows > 0) {
+    $sql_cba = "SELECT * FROM check_budget_allocations WHERE budget_year = ?";
+    if ($search != "") {
+        $search_param = "%" . $search . "%";
+        $sql_cba .= " AND (project_code LIKE ? OR project_name LIKE ? OR description LIKE ?)";
+        $stmt_cba = $conn->prepare($sql_cba);
+        $stmt_cba->bind_param("isss", $active_year, $search_param, $search_param, $search_param);
+    } else {
+        $stmt_cba = $conn->prepare($sql_cba);
+        $stmt_cba->bind_param("i", $active_year);
+    }
+    
+    if ($stmt_cba) {
+        $stmt_cba->execute();
+        $res_cba = $stmt_cba->get_result();
+        while ($row = $res_cba->fetch_assoc()) {
+            $code = trim($row['project_code'] ?? '');
+            $name = trim($row['project_name'] ?? '');
+            
+            $key = ($code !== '') ? $code : 'NO_CODE_' . $name;
+            if ($key === 'NO_CODE_') $key = 'NO_CODE_CBA_' . $row['id'];
+            
+            if (!isset($projects[$key])) {
+                $projects[$key] = [
+                    'code' => $code !== '' ? $code : '-',
+                    'name' => $name !== '' ? $name : (!empty($row['description']) ? $row['description'] : '-'),
+                    'responsible' => '-',
+                    'total_budget' => floatval($row['budget_amount'] ?? 0),
+                    'activities' => []
+                ];
+            }
+            
+            // ตรวจสอบข้อมูลซ้ำ (เพราะ Budget allocation กับ Check budget มักจะซิงค์กัน)
+            $is_dup = false;
+            $act_name = !empty($row['description']) ? $row['description'] : 'รายการจัดสรร';
+            $act_amount = floatval($row['amount'] ?? 0);
+            
+            foreach ($projects[$key]['activities'] as $act) {
+                if ($act['activity_name'] === $act_name && floatval($act['budget_amount']) === $act_amount) {
+                    $is_dup = true;
+                    break;
+                }
+            }
+            
+            // ถ้าไม่ซ้ำ ถึงจะเอามาแสดง
+            if (!$is_dup && ($act_name !== 'รายการจัดสรร' || $act_amount > 0)) {
+                $projects[$key]['activities'][] = [
+                    'activity_name' => $act_name,
+                    'budget_amount' => $act_amount,
+                    'fund_source' => !empty($row['fund_source']) ? $row['fund_source'] : '-'
+                ];
+            }
+        }
+    }
+}
+
+// จัดเรียงรหัสโครงการ
+ksort($projects);
 
 // [2. & 3. เรียกใช้ Header และ Navbar]
 require_once 'includes/header.php';
@@ -108,7 +246,7 @@ require_once 'includes/navbar.php';
             <div class="d-flex flex-wrap gap-2">
                 <form action="Budget allocation report.php" method="GET" class="d-flex shadow-sm" style="border-radius: 6px; overflow: hidden;">
                     <div class="input-group input-group-sm">
-                        <input type="text" name="search" class="form-control border-end-0" placeholder="ค้นหารหัส..." value="<?php echo htmlspecialchars($search); ?>">
+                        <input type="text" name="search" class="form-control border-end-0" placeholder="ค้นหารหัส/ชื่อ..." value="<?php echo htmlspecialchars($search); ?>">
                         <button class="btn btn-light border border-start-0" type="submit" style="color: #64748b;"><i class="fa-solid fa-magnifying-glass"></i></button>
                     </div>
                     <?php if($search != ""): ?>
@@ -135,58 +273,53 @@ require_once 'includes/navbar.php';
                 <thead>
                     <tr>
                         <th style="width: 5%;">ที่</th>
-                        <th style="width: 8%;">รหัส</th>
+                        <th style="width: 10%;">รหัส</th>
                         <th style="width: 40%; text-align: left;">โครงการ / กิจกรรม</th>
                         <th style="width: 15%; text-align: right;">งบประมาณ</th>
-                        <th style="width: 17%; text-align: left;">แหล่งงบประมาณ</th>
+                        <th style="width: 15%; text-align: left;">แหล่งงบประมาณ</th>
                         <th style="width: 15%; text-align: left;">ผู้รับผิดชอบ</th>
                     </tr>
                 </thead>
                 <tbody>
                     <?php 
-                    if (isset($result_data) && $result_data->num_rows > 0) {
-                        $current_code = '';
+                    if (count($projects) > 0) {
                         $i = 1;
-                        // จัดกลุ่มข้อมูลเพื่อคำนวณยอดรวมโครงการ
-                        $projects = [];
-                        while($row = $result_data->fetch_assoc()) {
-                            $projects[$row['code']]['name'] = $row['project_name'];
-                            $projects[$row['code']]['responsible'] = $row['responsible_person']; // สมมติว่าผู้รับผิดชอบเดียวกันทั้งโครงการ
-                            $projects[$row['code']]['activities'][] = $row;
-                        }
-
-                        foreach($projects as $code => $proj) {
-                            // คำนวณยอดรวมโครงการ
-                            $total_budget = 0;
-                            foreach($proj['activities'] as $act) {
-                                $total_budget += $act['budget_amount'];
+                        foreach($projects as $key => $proj) {
+                            
+                            // คำนวณงบประมาณ: ถ้าไม่มีงบหลัก ให้เอางบย่อยมาบวกกัน
+                            $display_budget = $proj['total_budget'];
+                            if ($display_budget == 0 && count($proj['activities']) > 0) {
+                                foreach($proj['activities'] as $act) {
+                                    $display_budget += $act['budget_amount'];
+                                }
                             }
 
-                            // แสดงบรรทัดโครงการ (หัวข้อ)
+                            // 1. แสดงแถวโครงการ (แถวหัวข้อหลัก)
                             echo "<tr class='project-row'>";
                             echo "<td class='text-center'>" . $i++ . "</td>";
-                            echo "<td class='text-center'>" . $code . "</td>";
-                            echo "<td class='text-start'>" . htmlspecialchars($proj['name']) . "</td>";
-                            echo "<td class='text-end text-danger'>" . number_format($total_budget, 2) . "</td>"; // ยอดรวมเป็นสีแดง
+                            echo "<td class='text-center text-primary'>" . htmlspecialchars($proj['code']) . "</td>";
+                            echo "<td class='text-start text-primary'>" . htmlspecialchars($proj['name']) . "</td>";
+                            echo "<td class='text-end text-danger'>" . number_format($display_budget, 2) . "</td>"; 
                             echo "<td></td>";
                             echo "<td class='text-start'>" . htmlspecialchars($proj['responsible']) . "</td>";
                             echo "</tr>";
 
-                            // แสดงบรรทัดกิจกรรม (รายการย่อย)
+                            // 2. แสดงแถวกิจกรรมย่อย ภายใต้โครงการนั้นๆ
                             foreach($proj['activities'] as $act) {
                                 echo "<tr class='activity-row'>";
                                 echo "<td></td>";
-                                echo "<td></td>"; // เว้นว่างรหัส
-                                echo "<td class='text-start ps-5'>- " . htmlspecialchars($act['activity_name']) . "</td>"; // ย่อหน้ากิจกรรม
-                                echo "<td class='text-end fw-bold'>" . number_format($act['budget_amount'], 2) . "</td>";
-                                echo "<td class='text-start'>" . htmlspecialchars($act['budget_source']) . "</td>";
+                                echo "<td></td>"; 
+                                echo "<td class='text-start ps-5'>- " . htmlspecialchars($act['activity_name']) . "</td>";
+                                echo "<td class='text-end fw-bold text-success'>" . number_format($act['budget_amount'], 2) . "</td>";
+                                echo "<td class='text-start'>" . htmlspecialchars($act['fund_source']) . "</td>";
                                 echo "<td></td>";
                                 echo "</tr>";
                             }
                         }
 
                     } else {
-                        echo "<tr><td colspan='6' class='text-center py-5 text-muted'>ไม่พบข้อมูลการจัดสรรงบประมาณ</td></tr>";
+                        // ถ้ายังไม่มีข้อมูลในระบบเลย จะแสดงแถวเปล่าๆ แจ้งเตือนสวยๆ ให้ครับ
+                        echo "<tr><td colspan='6' class='text-center py-5 text-muted'>ยังไม่มีข้อมูลการจัดสรรงบประมาณในปีงบประมาณ $active_year</td></tr>";
                     }
                     ?>
                 </tbody>

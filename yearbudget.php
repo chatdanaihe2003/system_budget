@@ -62,41 +62,44 @@ require_once 'includes/navbar.php';
     .info-box {
         background-color: #f8f9fa;
         border-left: 4px solid #17a2b8;
-        padding: 15px;
+        padding: 15px 20px;
         margin-bottom: 25px;
-        border-radius: 4px;
+        border-radius: 6px;
         color: #555;
         font-size: 0.95rem;
         line-height: 1.6;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
     }
-    .status-active { color: #198754; font-size: 1.2rem; } /* Green Check */
-    .status-inactive { color: #dc3545; font-size: 1.2rem; opacity: 0.5; } /* Red Cross */
+    .status-active { color: #198754; font-size: 1.3rem; } /* Green Check */
+    .status-inactive { color: #dc3545; font-size: 1.3rem; opacity: 0.5; } /* Red Cross */
+    .action-container { display: flex; justify-content: center; gap: 8px; }
 </style>
 
-<div class="container pb-5">
-    <div class="content-card">
+<div class="container-fluid pb-5 px-4">
+    <div class="content-card mt-4" style="background:#fff; border-radius:15px; padding:25px; box-shadow: 0 5px 20px rgba(0,0,0,0.05);">
         
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <div style="width: 150px;"></div> 
-            <h2 class="page-title m-0">กำหนดปีงบประมาณ</h2>
-            <button class="btn btn-add" data-bs-toggle="modal" data-bs-target="#addModal">
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+            <h2 class="page-title m-0 fw-bold text-primary">
+                <i class="fa-solid fa-calendar-days me-2"></i> กำหนดปีงบประมาณ
+            </h2>
+            <button class="btn btn-primary shadow-sm px-4" data-bs-toggle="modal" data-bs-target="#addModal" style="border-radius: 8px; font-weight: 500;">
                 <i class="fa-solid fa-plus me-1"></i> เพิ่มปีงบประมาณ
             </button>
         </div>
 
         <div class="info-box">
-            <i class="fa-solid fa-circle-info me-2"></i>
-            เป็นการกำหนดปีงบประมาณในการปฏิบัติงาน สามารถกำหนดปีงบประมาณในการปฏิบัติงานได้ โดยการ <strong>เลือก ที่เพิ่มปีงบประมาณ</strong> แล้วพิมพ์ปีงบประมาณ ที่ต้องการปฏิบัติการ ลงในช่องให้พิมพ์ แล้วเลือกปีทำงานปัจจุบันว่า <strong>ใช่</strong> ระบบก็จะประมวลผลให้เป็นปีที่ต้องการ
+            <i class="fa-solid fa-circle-info me-2 text-info fs-5 align-middle"></i>
+            เป็นการกำหนดปีงบประมาณในการปฏิบัติงาน สามารถกำหนดปีงบประมาณในการปฏิบัติงานได้ โดยการ <strong>เลือก เพิ่มปีงบประมาณ</strong> แล้วพิมพ์ปีงบประมาณ ที่ต้องการปฏิบัติการ ลงในช่องให้พิมพ์ แล้วเลือกปีทำงานปัจจุบันว่า <strong>ใช่ (สวิตช์เปิด)</strong> ระบบก็จะประมวลผลให้เป็นปีที่ต้องการ
         </div>
 
-        <div class="table-responsive">
-            <table class="table table-hover table-custom">
-                <thead>
+        <div class="table-responsive border rounded">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
                     <tr>
-                        <th style="width: 80px;">ที่</th>
-                        <th>ปีงบประมาณ</th>
-                        <th>ปีทำงานปัจจุบัน</th>
-                        <th style="width: 150px;">ลบ / แก้ไข</th>
+                        <th class="text-center py-3" style="width: 10%;">ที่</th>
+                        <th class="text-center py-3" style="width: 30%;">ปีงบประมาณ</th>
+                        <th class="text-center py-3" style="width: 30%;">สถานะปีทำงานปัจจุบัน</th>
+                        <th class="text-center py-3" style="width: 30%;">จัดการ</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -105,30 +108,32 @@ require_once 'includes/navbar.php';
                         $i = 1;
                         while($row = $result_years->fetch_assoc()) {
                             echo "<tr>";
-                            echo "<td>" . $i++ . "</td>";
-                            echo "<td class='fw-bold'>" . $row['budget_year'] . "</td>";
+                            echo "<td class='text-center text-muted'>" . $i++ . "</td>";
+                            echo "<td class='text-center fw-bold text-secondary fs-5'>" . htmlspecialchars($row['budget_year']) . "</td>";
                             
                             // แสดงสถานะ (Active/Inactive)
-                            echo "<td>";
+                            echo "<td class='text-center'>";
                             if($row['is_active'] == 1) {
-                                echo '<i class="fa-solid fa-circle-check status-active"></i>';
+                                echo '<span class="badge bg-success rounded-pill px-3 py-2 shadow-sm"><i class="fa-solid fa-circle-check me-1"></i> ปีปัจจุบัน</span>';
                             } else {
-                                echo '<i class="fa-solid fa-circle-xmark status-inactive"></i>';
+                                echo '<i class="fa-solid fa-circle-minus text-muted opacity-25" title="ไม่ใช่ปีปัจจุบัน"></i>';
                             }
                             echo "</td>";
 
                             // ปุ่มจัดการ
-                            echo '<td>';
-                            echo '<a href="?delete_id='.$row['id'].'" class="action-btn btn-delete" onclick="return confirm(\'คุณต้องการลบข้อมูลปี '.$row['budget_year'].' หรือไม่?\')" title="ลบ"><i class="fa-solid fa-trash-can"></i></a>';
-                            echo '<button class="action-btn btn-edit" title="แก้ไข" 
+                            echo "<td class='text-center'>";
+                            echo "<div class='action-container'>";
+                            echo '<a href="?delete_id='.$row['id'].'" class="btn btn-sm btn-outline-danger px-3 shadow-sm" onclick="return confirm(\'คุณต้องการลบข้อมูลปี '.$row['budget_year'].' หรือไม่?\')" title="ลบ"><i class="fa-solid fa-trash-can"></i> ลบ</a>';
+                            echo '<button class="btn btn-sm btn-outline-warning px-3 shadow-sm" title="แก้ไข" 
                                           onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
-                                          <i class="fa-solid fa-pen-to-square"></i>
-                                    </button>';
+                                          <i class="fa-solid fa-pen-to-square"></i> แก้ไข
+                                  </button>';
+                            echo "</div>";
                             echo '</td>';
                             echo "</tr>";
                         }
                     } else {
-                        echo "<tr><td colspan='4' class='text-center py-4 text-muted'>ยังไม่มีข้อมูลปีงบประมาณ</td></tr>";
+                        echo "<tr><td colspan='4' class='text-center py-5 text-muted'><i class='fa-regular fa-calendar-xmark fs-2 mb-2 d-block text-light'></i>ยังไม่มีข้อมูลปีงบประมาณ</td></tr>";
                     }
                     ?>
                 </tbody>
@@ -140,26 +145,26 @@ require_once 'includes/navbar.php';
 
 <div class="modal fade" id="addModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content">
+        <div class="modal-content shadow border-0">
             <form action="yearbudget.php" method="POST">
                 <input type="hidden" name="action" value="add">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="fa-solid fa-calendar-plus"></i> เพิ่มปีงบประมาณ</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold"><i class="fa-solid fa-calendar-plus me-2"></i> เพิ่มปีงบประมาณ</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">ปีงบประมาณ (พ.ศ.)</label>
-                        <input type="number" name="budget_year" class="form-control" placeholder="เช่น 2567" required min="2500" max="3000">
+                <div class="modal-body p-4">
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">ปีงบประมาณ (พ.ศ.) <span class="text-danger">*</span></label>
+                        <input type="number" name="budget_year" class="form-control form-control-lg text-center fw-bold text-primary" placeholder="เช่น 2567" required min="2500" max="3000">
                     </div>
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" name="is_active" id="add_is_active">
-                        <label class="form-check-label" for="add_is_active">ตั้งเป็นปีทำงานปัจจุบัน</label>
+                    <div class="form-check form-switch bg-light p-3 rounded border">
+                        <input class="form-check-input ms-1" type="checkbox" name="is_active" id="add_is_active" style="transform: scale(1.3);">
+                        <label class="form-check-label ms-3 fw-bold text-success" for="add_is_active">ตั้งเป็นปีทำงานปัจจุบัน</label>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-                    <button type="submit" class="btn btn-primary">บันทึกข้อมูล</button>
+                <div class="modal-footer bg-light border-0 py-3">
+                    <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="submit" class="btn btn-primary px-4 fw-bold"><i class="fa-solid fa-save me-1"></i> บันทึกข้อมูล</button>
                 </div>
             </form>
         </div>
@@ -168,28 +173,28 @@ require_once 'includes/navbar.php';
 
 <div class="modal fade" id="editModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content">
+        <div class="modal-content shadow border-0">
             <form action="yearbudget.php" method="POST">
                 <input type="hidden" name="action" value="edit">
                 <input type="hidden" name="edit_id" id="edit_id">
                 
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="fa-solid fa-pen-to-square"></i> แก้ไขปีงบประมาณ</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title fw-bold"><i class="fa-solid fa-pen-to-square me-2"></i> แก้ไขปีงบประมาณ</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">ปีงบประมาณ (พ.ศ.)</label>
-                        <input type="number" name="budget_year" id="edit_budget_year" class="form-control" required>
+                <div class="modal-body p-4">
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">ปีงบประมาณ (พ.ศ.) <span class="text-danger">*</span></label>
+                        <input type="number" name="budget_year" id="edit_budget_year" class="form-control form-control-lg text-center fw-bold text-info" required>
                     </div>
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" name="is_active" id="edit_is_active">
-                        <label class="form-check-label" for="edit_is_active">ตั้งเป็นปีทำงานปัจจุบัน</label>
+                    <div class="form-check form-switch bg-light p-3 rounded border">
+                        <input class="form-check-input ms-1" type="checkbox" name="is_active" id="edit_is_active" style="transform: scale(1.3);">
+                        <label class="form-check-label ms-3 fw-bold text-success" for="edit_is_active">ตั้งเป็นปีทำงานปัจจุบัน</label>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
-                    <button type="submit" class="btn btn-primary">บันทึกการแก้ไข</button>
+                <div class="modal-footer bg-light border-0 py-3">
+                    <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">ยกเลิก</button>
+                    <button type="submit" class="btn btn-info text-white fw-bold px-4"><i class="fa-solid fa-save me-1"></i> บันทึกการแก้ไข</button>
                 </div>
             </form>
         </div>

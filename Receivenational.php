@@ -126,6 +126,102 @@ $next_receive_order = ($row_next['max_order'] ? $row_next['max_order'] : 0) + 1;
 
 $total_amount = 0;
 
+// --- [เพิ่มใหม่] ค้นหาและดึงข้อมูล ประเภท(ย่อย)ของเงิน จากหน้า Subtypesmoney แบบอัตโนมัติ ---
+$money_type_options = "";
+$subtype_table = "";
+
+// 1. ค้นหาตารางที่เกี่ยวข้องกับ Subtypesmoney
+$possible_subtype_tables = ['money_types_sub', 'sub_types_money', 'subtypesmoney', 'subtype_money', 'money_subtypes'];
+foreach ($possible_subtype_tables as $ptable) {
+    $check_exists = $conn->query("SHOW TABLES LIKE '$ptable'");
+    if ($check_exists && $check_exists->num_rows > 0) {
+        $subtype_table = $ptable;
+        break; 
+    }
+}
+
+// ถ้ายังไม่เจอ ให้กวาดหาตารางที่มีคำว่า 'sub' และ 'money' หรือ 'type'
+if ($subtype_table === "") {
+    $tb_check_sub = $conn->query("SHOW TABLES");
+    if ($tb_check_sub) {
+        while ($tb_row = $tb_check_sub->fetch_array()) {
+            $t_name = strtolower($tb_row[0]);
+            if (strpos($t_name, 'sub') !== false && (strpos($t_name, 'money') !== false || strpos($t_name, 'type') !== false)) {
+                $subtype_table = $tb_row[0];
+                break; 
+            }
+        }
+    }
+}
+
+if ($subtype_table !== "") {
+    // 2. ดึงรายชื่อคอลัมน์ของตารางที่เจอ
+    $col_q_sub = $conn->query("SHOW COLUMNS FROM `$subtype_table`");
+    $sub_cols = [];
+    if($col_q_sub){
+        while($c = $col_q_sub->fetch_assoc()) {
+            $sub_cols[] = $c['Field'];
+        }
+    }
+    
+    // 3. หาคอลัมน์ที่น่าจะเก็บชื่อประเภท(ย่อย)ของเงิน
+    $sub_name_col = "";
+    $possible_sub_cols = ['name', 'subtype_name', 'type_name', 'title', 'description', 'money_type_name'];
+    
+    foreach($possible_sub_cols as $p_col) {
+        foreach($sub_cols as $actual_col) {
+            if(strtolower($actual_col) == strtolower($p_col)) {
+                $sub_name_col = $actual_col;
+                break 2;
+            }
+        }
+    }
+
+    // ถ้าไม่เจอชื่อที่คุ้นเคย ให้เอาคอลัมน์แรกที่ไม่ใช่ id, budget_year, etc.
+    if ($sub_name_col == "") {
+        foreach($sub_cols as $col) {
+            $lcol = strtolower($col);
+            if (!in_array($lcol, ['id', 'budget_year', 'created_at', 'updated_at', 'status', 'date', 'main_type_id', 'money_types_main_id'])) {
+                $sub_name_col = $col;
+                break;
+            }
+        }
+    }
+
+    if ($sub_name_col != "") {
+        // 4. ทำการคิวรี่ข้อมูล
+        $has_b_year = false;
+        foreach($sub_cols as $col) {
+            if(strtolower($col) == 'budget_year') {
+                $has_b_year = true;
+                break;
+            }
+        }
+
+        if ($has_b_year) {
+            $sql_sub = "SELECT DISTINCT `$sub_name_col` FROM `$subtype_table` WHERE budget_year = ? AND `$sub_name_col` IS NOT NULL AND `$sub_name_col` != '' ORDER BY `$sub_name_col` ASC";
+            $stmt_sub = $conn->prepare($sql_sub);
+            $stmt_sub->bind_param("i", $active_year);
+            $stmt_sub->execute();
+            $res_sub = $stmt_sub->get_result();
+        } else {
+            $sql_sub = "SELECT DISTINCT `$sub_name_col` FROM `$subtype_table` WHERE `$sub_name_col` IS NOT NULL AND `$sub_name_col` != '' ORDER BY `$sub_name_col` ASC";
+            $res_sub = $conn->query($sql_sub);
+        }
+
+        if ($res_sub && $res_sub->num_rows > 0) {
+            $unique_subs = []; 
+            while($sub = $res_sub->fetch_assoc()) {
+                $s_name = trim($sub[$sub_name_col]);
+                if ($s_name != '' && !in_array($s_name, $unique_subs)) {
+                    $unique_subs[] = $s_name;
+                    $money_type_options .= "<option value='".htmlspecialchars($s_name, ENT_QUOTES, 'UTF-8')."'>".htmlspecialchars($s_name, ENT_QUOTES, 'UTF-8')."</option>";
+                }
+            }
+        }
+    }
+}
+
 require_once 'includes/header.php';
 require_once 'includes/navbar.php';
 ?>
@@ -235,7 +331,7 @@ require_once 'includes/navbar.php';
                         <div class="col-md-6">
                             <select name="money_type" id="money_type" class="form-select">
                                 <option value="">เลือก</option>
-                                <option value="340 รายได้เบ็ดเตล็ดอื่น">340 รายได้เบ็ดเตล็ดอื่น</option>
+                                <?php echo $money_type_options; ?>
                             </select>
                         </div>
                     </div>
@@ -334,11 +430,17 @@ require_once 'includes/navbar.php';
 
 <script>
     function checkAdminAction(action, data = null) {
-        if (action === 'add') { openAddModal(); } else { openEditModal(data); }
+        if (action === 'add') {
+            openAddModal();
+        } else {
+            openEditModal(data);
+        }
     }
 
     function checkAdminDelete(id) {
-        if (confirm('คุณต้องการลบรายการนี้หรือไม่?')) { window.location.href = `?delete_id=${id}`; }
+        if (confirm('คุณต้องการลบรายการนี้หรือไม่?')) {
+            window.location.href = `?delete_id=${id}`;
+        }
     }
 
     function openAddModal() {
@@ -358,7 +460,15 @@ require_once 'includes/navbar.php';
         document.getElementById('receive_order').value = data.receive_order;
         document.getElementById('doc_date').value = data.doc_date;
         document.getElementById('doc_no').value = data.doc_no;
-        document.getElementById('money_type').value = data.money_type || '';
+        
+        // [แก้ไข] จัดการ Dropdown ประเภทของเงิน เพื่อให้แสดงข้อมูลเก่าเวลากดปุ่มแก้ไข
+        let moneySelect = document.getElementById('money_type');
+        let moneyValue = data.money_type || '';
+        if(moneyValue && !Array.from(moneySelect.options).some(opt => opt.value === moneyValue)) {
+            moneySelect.add(new Option(moneyValue, moneyValue));
+        }
+        moneySelect.value = moneyValue;
+
         document.getElementById('description').value = data.description;
         document.getElementById('transaction_type').value = data.transaction_type;
         document.getElementById('amount').value = data.amount;

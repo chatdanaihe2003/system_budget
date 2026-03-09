@@ -171,15 +171,161 @@ $result_data = $stmt->get_result();
 
 $total_amount = 0; 
 
-// Mock Data สำหรับ Dropdown
-$projects_opt = [
-    ['id' => 1, 'name' => '230 การประชุมเชิงปฏิบัติการตรวจสอบภายใน...'],
-    ['id' => 2, 'name' => 'โครงการพัฒนาคุณภาพผู้เรียน']
-];
-$activities_opt = [
-    ['id' => 1, 'name' => '230001 ค่าใช้จ่ายในการเดินทางเข้าร่วมประชุม...'],
-    ['id' => 2, 'name' => 'กิจกรรมทัศนศึกษา']
-];
+// --- [ของเดิม] ดึงข้อมูล ผลผลิต/โครงการ จากตาราง project_outcomes ---
+$projects_opt = [];
+$check_po_tb = $conn->query("SHOW TABLES LIKE 'project_outcomes'");
+if ($check_po_tb && $check_po_tb->num_rows > 0) {
+    $sql_po_opt = "SELECT id, project_name FROM project_outcomes WHERE budget_year = ? AND project_name IS NOT NULL AND project_name != '' ORDER BY project_name ASC";
+    $stmt_po_opt = $conn->prepare($sql_po_opt);
+    $stmt_po_opt->bind_param("i", $active_year);
+    $stmt_po_opt->execute();
+    $res_po_opt = $stmt_po_opt->get_result();
+    
+    if ($res_po_opt && $res_po_opt->num_rows > 0) {
+        while($po = $res_po_opt->fetch_assoc()) {
+            $projects_opt[] = [
+                'id' => $po['id'],
+                'name' => $po['project_name']
+            ];
+        }
+    }
+}
+
+// --- [ของเดิม] ดึงข้อมูลกิจกรรม จากตาราง activities ---
+$activities_opt = [];
+$act_table = "activities";
+$check_act_tb = $conn->query("SHOW TABLES LIKE 'activities'");
+if(!$check_act_tb || $check_act_tb->num_rows == 0) {
+    $check_act_tb2 = $conn->query("SHOW TABLES LIKE 'activity'");
+    if($check_act_tb2 && $check_act_tb2->num_rows > 0) {
+        $act_table = "activity";
+    }
+}
+
+if($conn->query("SHOW TABLES LIKE '$act_table'")->num_rows > 0) {
+    $act_cols = [];
+    $col_q = $conn->query("SHOW COLUMNS FROM $act_table");
+    while($c = $col_q->fetch_assoc()) { $act_cols[] = $c['Field']; }
+    
+    $act_name_col = "";
+    if (in_array('activity_name', $act_cols)) $act_name_col = "activity_name";
+    elseif (in_array('name', $act_cols)) $act_name_col = "name";
+    elseif (in_array('description', $act_cols)) $act_name_col = "description";
+    
+    if ($act_name_col != "") {
+        if (in_array('budget_year', $act_cols)) {
+            $sql_act_opt = "SELECT id, $act_name_col FROM $act_table WHERE budget_year = ? AND $act_name_col IS NOT NULL AND $act_name_col != '' ORDER BY $act_name_col ASC";
+            $stmt_act_opt = $conn->prepare($sql_act_opt);
+            $stmt_act_opt->bind_param("i", $active_year);
+            $stmt_act_opt->execute();
+            $res_act_opt = $stmt_act_opt->get_result();
+        } else {
+            $sql_act_opt = "SELECT id, $act_name_col FROM $act_table WHERE $act_name_col IS NOT NULL AND $act_name_col != '' ORDER BY $act_name_col ASC";
+            $res_act_opt = $conn->query($sql_act_opt);
+        }
+        
+        if ($res_act_opt && $res_act_opt->num_rows > 0) {
+            while($act = $res_act_opt->fetch_assoc()) {
+                $activities_opt[] = [
+                    'id' => $act['id'],
+                    'name' => $act[$act_name_col]
+                ];
+            }
+        }
+    }
+}
+
+// --- [เพิ่มส่วนนี้ใหม่] ค้นหาและดึงข้อมูล ประเภทรายจ่าย (รายการจ่าย) แบบอัตโนมัติ ---
+$expense_options = "";
+$exp_table = "";
+
+$possible_exp_tables = ['expensesbudget', 'expense_budget', 'expenses_budget', 'expensebudget', 'expenses', 'expense_types', 'expense_type', 'type_expense'];
+
+foreach ($possible_exp_tables as $ptable) {
+    $check_exists = $conn->query("SHOW TABLES LIKE '$ptable'");
+    if ($check_exists && $check_exists->num_rows > 0) {
+        $exp_table = $ptable;
+        break; 
+    }
+}
+
+if ($exp_table === "") {
+    $tb_check_exp = $conn->query("SHOW TABLES");
+    if ($tb_check_exp) {
+        while ($tb_row = $tb_check_exp->fetch_array()) {
+            $t_name = strtolower($tb_row[0]);
+            if (strpos($t_name, 'expense') !== false) {
+                if (in_array($t_name, ['receive_budget', 'budget_allocations', 'project_refunds', 'treasury_refunds', 'fund_rollovers', 'project_withdrawals', 'treasury_withdrawals'])) continue;
+                $exp_table = $tb_row[0];
+                break; 
+            }
+        }
+    }
+}
+
+if ($exp_table !== "") {
+    $col_q_exp = $conn->query("SHOW COLUMNS FROM `$exp_table`");
+    $exp_cols = [];
+    if($col_q_exp){
+        while($c = $col_q_exp->fetch_assoc()) {
+            $exp_cols[] = $c['Field'];
+        }
+    }
+    
+    $exp_name_col = "";
+    $possible_exp_cols = ['name', 'expense_name', 'budget_name', 'title', 'description', 'expense_type', 'type_name', 'expensesbudget', 'expensebudget'];
+    
+    foreach($possible_exp_cols as $p_col) {
+        foreach($exp_cols as $actual_col) {
+            if(strtolower($actual_col) == strtolower($p_col)) {
+                $exp_name_col = $actual_col;
+                break 2;
+            }
+        }
+    }
+
+    if ($exp_name_col == "") {
+        foreach($exp_cols as $col) {
+            $lcol = strtolower($col);
+            if (!in_array($lcol, ['id', 'budget_year', 'created_at', 'updated_at', 'status'])) {
+                $exp_name_col = $col;
+                break;
+            }
+        }
+    }
+
+    if ($exp_name_col != "") {
+        $has_b_year = false;
+        foreach($exp_cols as $col) {
+            if(strtolower($col) == 'budget_year') {
+                $has_b_year = true;
+                break;
+            }
+        }
+
+        if ($has_b_year) {
+            $sql_exp = "SELECT DISTINCT `$exp_name_col` FROM `$exp_table` WHERE budget_year = ? AND `$exp_name_col` IS NOT NULL AND `$exp_name_col` != '' ORDER BY `$exp_name_col` ASC";
+            $stmt_exp = $conn->prepare($sql_exp);
+            $stmt_exp->bind_param("i", $active_year);
+            $stmt_exp->execute();
+            $res_exp = $stmt_exp->get_result();
+        } else {
+            $sql_exp = "SELECT DISTINCT `$exp_name_col` FROM `$exp_table` WHERE `$exp_name_col` IS NOT NULL AND `$exp_name_col` != '' ORDER BY `$exp_name_col` ASC";
+            $res_exp = $conn->query($sql_exp);
+        }
+
+        if ($res_exp && $res_exp->num_rows > 0) {
+            $unique_exps = []; 
+            while($exp = $res_exp->fetch_assoc()) {
+                $e_name = trim($exp[$exp_name_col]);
+                if ($e_name != '' && !in_array($e_name, $unique_exps)) {
+                    $unique_exps[] = $e_name;
+                    $expense_options .= "<option value='".htmlspecialchars($e_name, ENT_QUOTES, 'UTF-8')."'>".htmlspecialchars($e_name, ENT_QUOTES, 'UTF-8')."</option>";
+                }
+            }
+        }
+    }
+}
 
 // [2. & 3. เรียกใช้ Header และ Navbar]
 require_once 'includes/header.php';
@@ -330,12 +476,12 @@ require_once 'includes/navbar.php';
                         </div>
 
                         <div class="row mb-2">
-                            <div class="col-md-4 form-label-custom">โครงการ</div>
+                            <div class="col-md-4 form-label-custom">ผลผลิต/โครงการ</div>
                             <div class="col-md-7">
                                 <select name="project_id" id="project_id" class="form-select form-select-sm">
                                     <option value="0">เลือก</option>
                                     <?php foreach ($projects_opt as $p): ?>
-                                        <option value="<?php echo $p['id']; ?>"><?php echo htmlspecialchars($p['name']); ?></option>
+                                        <option value="<?php echo htmlspecialchars($p['id']); ?>"><?php echo htmlspecialchars($p['name']); ?></option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
@@ -347,7 +493,7 @@ require_once 'includes/navbar.php';
                                 <select name="activity_id" id="activity_id" class="form-select form-select-sm">
                                     <option value="0">เลือก</option>
                                     <?php foreach ($activities_opt as $a): ?>
-                                        <option value="<?php echo $a['id']; ?>"><?php echo htmlspecialchars($a['name']); ?></option>
+                                        <option value="<?php echo htmlspecialchars($a['id']); ?>"><?php echo htmlspecialchars($a['name']); ?></option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
@@ -365,9 +511,7 @@ require_once 'includes/navbar.php';
                             <div class="col-md-4">
                                 <select name="expense_type" id="expense_type" class="form-select form-select-sm">
                                     <option value="">เลือก</option>
-                                    <option value="ค่าวัสดุ">ค่าวัสดุ</option>
-                                    <option value="ค่าใช้สอย">ค่าใช้สอย</option>
-                                    <option value="ค่าตอบแทน">ค่าตอบแทน</option>
+                                    <?php echo $expense_options; ?>
                                 </select>
                             </div>
                         </div>
@@ -439,8 +583,8 @@ require_once 'includes/navbar.php';
 
 <script>
     // ดึงข้อมูล array มาใช้เทียบชื่อใน JavaScript
-    const projectsList = <?php echo json_encode($projects_opt); ?>;
-    const activitiesList = <?php echo json_encode($activities_opt); ?>;
+    const projectsList = <?php echo json_encode($projects_opt, JSON_UNESCAPED_UNICODE); ?>;
+    const activitiesList = <?php echo json_encode($activities_opt, JSON_UNESCAPED_UNICODE); ?>;
     const currentUserName = '<?php echo isset($_SESSION["fullname"]) ? addslashes($_SESSION["fullname"]) : (isset($_SESSION["name"]) ? addslashes($_SESSION["name"]) : ""); ?>';
 
     function openAddModal() {
@@ -462,9 +606,31 @@ require_once 'includes/navbar.php';
         document.getElementById('doc_date').value = data.doc_date || '<?php echo date('Y-m-d'); ?>';
         document.getElementById('doc_no').value = data.doc_no || '';
         document.getElementById('description').value = data.description || '';
-        document.getElementById('project_id').value = data.project_id || '0';
-        document.getElementById('activity_id').value = data.activity_id || '0';
-        document.getElementById('expense_type').value = data.expense_type || '';
+        
+        // จัดการเรื่อง Project ID
+        let projSelect = document.getElementById('project_id');
+        let projValue = data.project_id || '0';
+        if (projValue != '0' && !Array.from(projSelect.options).some(opt => opt.value == projValue)) {
+            projSelect.add(new Option('โครงการ ID: ' + projValue, projValue));
+        }
+        projSelect.value = projValue;
+
+        // จัดการเรื่อง Activity ID (ให้แสดงค่าเดิมเวลากดแก้ไขเผื่อไม่ตรงใน Dropdown)
+        let actSelect = document.getElementById('activity_id');
+        let actValue = data.activity_id || '0';
+        if (actValue != '0' && !Array.from(actSelect.options).some(opt => opt.value == actValue)) {
+            actSelect.add(new Option('กิจกรรม ID: ' + actValue, actValue));
+        }
+        actSelect.value = actValue;
+
+        // [แก้ไข] จัดการ Dropdown ประเภทรายการจ่าย (expense_type) ให้แสดงค่าเดิมตอนกดแก้ไข
+        let expSelect = document.getElementById('expense_type');
+        let expValue = data.expense_type || '';
+        if (expValue != '' && !Array.from(expSelect.options).some(opt => opt.value == expValue)) {
+            expSelect.add(new Option(expValue, expValue));
+        }
+        expSelect.value = expValue;
+
         document.getElementById('borrower').value = data.borrower || '';
         document.getElementById('amount').value = data.amount || '';
         document.getElementById('officer_name').value = data.officer_name || '';
