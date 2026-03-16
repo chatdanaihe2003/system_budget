@@ -3,7 +3,7 @@
 require_once 'includes/db.php'; 
 
 // ตั้งค่าตัวแปรสำหรับ Header
-$page_title = "กำหนดปีงบประมาณ - AMSS++";
+$page_title = "กำหนดปีงบประมาณ ";
 $current_page = 'yearbudget.php'; // กำหนดชื่อไฟล์ให้ตรงกับเงื่อนไขใน Navbar
 $page_header = "กำหนดปีงบประมาณ";
 
@@ -14,10 +14,12 @@ $page_header = "กำหนดปีงบประมาณ";
 // 1. ลบข้อมูล
 if (isset($_GET['delete_id'])) {
     $id = $_GET['delete_id'];
-    $stmt = $conn->prepare("DELETE FROM fiscal_years WHERE id = ?");
+    $stmt = $conn->prepare("DELETE FROM year_budget WHERE id = ?");
     $stmt->bind_param("i", $id);
     $stmt->execute();
-    header("Location: yearbudget.php");
+    
+    // [แก้ไขใหม่] ส่งค่า status=deleted กลับไปเพื่อโชว์ Popup แจ้งเตือนความสำเร็จ
+    header("Location: yearbudget.php?status=deleted");
     exit();
 }
 
@@ -28,19 +30,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     // Logic พิเศษ: ถ้ามีการตั้งเป็นปีปัจจุบัน (is_active = 1) ให้เคลียร์ปีอื่นๆ เป็น 0 ก่อน
     if ($is_active == 1) {
-        $conn->query("UPDATE fiscal_years SET is_active = 0");
+        $conn->query("UPDATE year_budget SET is_active = 0");
         
         // อัปเดต Session ให้เป็นปีปัจจุบันทันที เพื่อให้หน้าอื่นรับรู้
         $_SESSION['active_budget_year'] = $budget_year; 
     }
 
     if (isset($_POST['action']) && $_POST['action'] == 'add') {
-        $stmt = $conn->prepare("INSERT INTO fiscal_years (budget_year, is_active) VALUES (?, ?)");
+        $stmt = $conn->prepare("INSERT INTO year_budget (budget_year, is_active) VALUES (?, ?)");
         $stmt->bind_param("ii", $budget_year, $is_active);
         $stmt->execute();
     } elseif (isset($_POST['action']) && $_POST['action'] == 'edit') {
         $id = $_POST['edit_id'];
-        $stmt = $conn->prepare("UPDATE fiscal_years SET budget_year=?, is_active=? WHERE id=?");
+        $stmt = $conn->prepare("UPDATE year_budget SET budget_year=?, is_active=? WHERE id=?");
         $stmt->bind_param("iii", $budget_year, $is_active, $id);
         $stmt->execute();
     }
@@ -49,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 }
 
 // --- ดึงข้อมูล ---
-$sql_years = "SELECT * FROM fiscal_years ORDER BY budget_year DESC";
+$sql_years = "SELECT * FROM year_budget ORDER BY budget_year DESC";
 $result_years = $conn->query($sql_years);
 
 // [2. & 3. เรียกใช้ Header และ Navbar]
@@ -104,7 +106,8 @@ require_once 'includes/navbar.php';
                 </thead>
                 <tbody>
                     <?php 
-                    if ($result_years->num_rows > 0) {
+                    // ตรวจสอบกัน Error หาก Query ล้มเหลวจะข้ามไปแสดงส่วน else ทันที
+                    if ($result_years && $result_years->num_rows > 0) {
                         $i = 1;
                         while($row = $result_years->fetch_assoc()) {
                             echo "<tr>";
@@ -123,7 +126,10 @@ require_once 'includes/navbar.php';
                             // ปุ่มจัดการ
                             echo "<td class='text-center'>";
                             echo "<div class='action-container'>";
-                            echo '<a href="?delete_id='.$row['id'].'" class="btn btn-sm btn-outline-danger px-3 shadow-sm" onclick="return confirm(\'คุณต้องการลบข้อมูลปี '.$row['budget_year'].' หรือไม่?\')" title="ลบ"><i class="fa-solid fa-trash-can"></i> ลบ</a>';
+                            
+                            // [แก้ไขใหม่] เปลี่ยนปุ่มลบให้เรียกเปิด Modal 
+                            echo '<button type="button" class="btn btn-sm btn-outline-danger px-3 shadow-sm" title="ลบ" onclick="openDeleteModal('.$row['id'].', \''.htmlspecialchars($row['budget_year']).'\')"><i class="fa-solid fa-trash-can"></i> ลบ</button>';
+
                             echo '<button class="btn btn-sm btn-outline-warning px-3 shadow-sm" title="แก้ไข" 
                                           onclick="openEditModal('.htmlspecialchars(json_encode($row), ENT_QUOTES, 'UTF-8').')">
                                           <i class="fa-solid fa-pen-to-square"></i> แก้ไข
@@ -201,9 +207,61 @@ require_once 'includes/navbar.php';
     </div>
 </div>
 
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true" style="z-index: 1060;">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow border-0" style="border-radius: 12px;">
+            <div class="modal-header bg-danger text-white" style="border-radius: 12px 12px 0 0;">
+                <h5 class="modal-title fw-bold"><i class="fa-solid fa-triangle-exclamation me-2"></i> ยืนยันการลบข้อมูล</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <i class="fa-solid fa-calendar-xmark text-danger mb-3" style="font-size: 4.5rem;"></i>
+                <h4 class="fw-bold text-dark mb-2">คุณต้องการลบข้อมูลปี <span id="display_delete_year" class="text-danger"></span> หรือไม่?</h4>
+                <div class="alert alert-warning mt-4 mb-0 text-start border-0" style="background-color: #fff3cd; color: #856404; font-size: 0.95rem;">
+                    <i class="fa-solid fa-circle-info me-1"></i> <strong>คำเตือน:</strong> หากลบแล้วจะไม่สามารถกู้คืนข้อมูลได้
+                </div>
+            </div>
+            <div class="modal-footer bg-light border-0 justify-content-center py-3" style="border-radius: 0 0 12px 12px;">
+                <button type="button" class="btn btn-secondary px-4 fw-bold" data-bs-dismiss="modal" style="border-radius: 8px;">ยกเลิก</button>
+                <a href="#" id="confirmDeleteBtn" class="btn btn-danger px-4 fw-bold" style="border-radius: 8px;">
+                    <i class="fa-solid fa-trash-can me-1"></i> ยืนยันการลบ
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="successDeleteModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content shadow border-0" style="border-radius: 16px;">
+            <div class="modal-body p-4 text-center">
+                <div class="d-flex justify-content-center align-items-center mx-auto bg-success bg-opacity-10 rounded-circle mb-4" style="width: 80px; height: 80px;">
+                    <i class="fa-solid fa-check text-success" style="font-size: 3rem;"></i>
+                </div>
+                <h4 class="fw-bold text-dark mb-2">สำเร็จ!</h4>
+                <p class="text-muted fs-6 mb-4">ลบปีงบประมาณสำเร็จ</p>
+                <button type="button" class="btn btn-success px-5 fw-bold w-100" style="border-radius: 8px;" onclick="window.location='yearbudget.php'">ตกลง</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?php require_once 'includes/footer.php'; ?>
 
 <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // [แก้ไขใหม่] ตรวจสอบ URL ว่ามีการลบสำเร็จหรือไม่ ถ้าสำเร็จให้แสดง Popup
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('status')) {
+            const status = urlParams.get('status');
+            if (status === 'deleted') {
+                new bootstrap.Modal(document.getElementById('successDeleteModal')).show();
+                // ลบพารามิเตอร์ status ออกจาก URL เพื่อไม่ให้ Popup เด้งซ้ำเมื่อ Refresh
+                window.history.replaceState(null, null, window.location.pathname);
+            }
+        }
+    });
+
     function openEditModal(data) {
         document.getElementById('edit_id').value = data.id;
         document.getElementById('edit_budget_year').value = data.budget_year;
@@ -211,5 +269,17 @@ require_once 'includes/navbar.php';
         
         var myModal = new bootstrap.Modal(document.getElementById('editModal'));
         myModal.show();
+    }
+
+    // [เพิ่มใหม่] ฟังก์ชันเปิด Modal สำหรับยืนยันการลบข้อมูล
+    function openDeleteModal(id, year) {
+        // นำปีมาแสดงใน Popup
+        document.getElementById('display_delete_year').innerText = year;
+        
+        // ตั้งค่าลิงก์ไปยังปุ่มลบจริง
+        document.getElementById('confirmDeleteBtn').href = '?delete_id=' + id;
+        
+        // เปิด Modal
+        new bootstrap.Modal(document.getElementById('deleteModal')).show();
     }
 </script>

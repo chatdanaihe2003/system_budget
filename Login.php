@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>เข้าสู่ระบบ - AMSS++ Budget System</title>
+    <title>เข้าสู่ระบบ - Planning and budgeting system</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
@@ -241,8 +241,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <div class="header-icon-wrapper">
                 <img src="images/สพฐ._3_D_ไม่มีขอบ-removebg-preview.png" alt="โลโก้ สพฐ.">
             </div>
-            <h3>Budget Control System</h3>
-            <h6>ระบบบริหารจัดการงบประมาณ</h6>
+            <h3>Planning and budgeting system</h3>
+            <h6>ระบบแผนงานและงบประมาณ</h6>
             <small>สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</small>
         </div>
 

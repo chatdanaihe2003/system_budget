@@ -251,8 +251,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <div class="header-icon-wrapper">
                 <img src="images/สพฐ._3_D_ไม่มีขอบ-removebg-preview.png" alt="โลโก้ สพฐ.">
             </div>
-            <h3>Budget Control System</h3>
-            <h6>ระบบบริหารจัดการงบประมาณ</h6>
+            <h3>Planning and budgeting system</h3>
+            <h6>ระบบแผนงานและงบประมาณ</h6>
             <small>สำนักงานเขตพื้นที่การศึกษาประถมศึกษาชลบุรี เขต 2</small>
         </div>
 

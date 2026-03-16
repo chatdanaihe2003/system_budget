@@ -3,7 +3,7 @@
 require_once 'includes/db.php'; 
 
 // ตั้งค่าตัวแปรสำหรับ Header
-$page_title = "หน้าหลัก - ระบบการเงินและบัญชี AMSS++";
+$page_title = "หน้าหลัก - ระบบการเงินและบัญชี ";
 $current_page = basename($_SERVER['PHP_SELF']); 
 // ชื่อหน้าบนแถบ Sub-header
 $page_header = 'แผงควบคุมระบบการเงิน';
@@ -172,14 +172,15 @@ require_once 'includes/navbar.php';
         <div class="hero-content">
             <div class="logo-visual-wrapper">
                 <div class="inner-white-box">
-                    <i class="fa-solid fa-circle-dollar-to-slot"></i>
+                    <i class="fa-solid fa-file-invoice-dollar"></i>
                 </div>
             </div>
 
             <div class="hero-text">
+                
                 <h2 class="label-top">ระบบ</h2>
-                <h1 class="main-title">การเงิน</h1>
-                <h2 class="label-bottom">และบัญชี</h2>
+                <h1 class="main-title">แผนงาน</h1>
+                <h2 class="label-bottom">และงบประมาณ</h2>
             </div>
         </div>
 

@@ -1,4 +1,4 @@
-    <!DOCTYPE html>
+<!DOCTYPE html>
     <html lang="th">
     <head>
         <meta charset="UTF-8">
@@ -12,14 +12,14 @@
         <style>
             /* Modern & Clean Palette */
             :root {
-                --primary-dark: #0f172a;    /* Navy Dark */
-                --primary-main: #1e293b;    /* Slate Dark */
+                --primary-dark: #253968;    /* Navy Dark */
+                --primary-main: #3e4f6b;    /* Slate Dark */
                 --accent-color: #06b6d4;    /* Modern Cyan */
                 --accent-hover: #0891b2;
                 --bg-body: #f1f5f9;         /* Light Blue Gray */
                 --white: #ffffff;
-                --text-main: #334155;
-                --text-muted: #64748b;
+                --text-main: #2b3749;
+                --text-muted: #536174;
                 --transition: all 0.3s ease;
             }
 
@@ -232,6 +232,37 @@
             ::-webkit-scrollbar-track { background: #f1f5f9; }
             ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
             ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+            /* ==================================================== */
+            /* [เพิ่มใหม่] CSS ปรับการแสดงผลสำหรับมือถือ (Responsive) */
+            /* ==================================================== */
+            @media (max-width: 767.98px) {
+                .content-card { 
+                    padding: 20px; /* ลดระยะขอบด้านในลงเมื่อเป็นจอมือถือ */
+                    margin-top: 15px;
+                    min-height: auto;
+                }
+                .page-title { 
+                    font-size: 1.25rem; /* ลดขนาดหัวข้อลง */
+                    margin-bottom: 20px;
+                }
+                .sub-header {
+                    font-size: 0.9rem;
+                    padding: 8px 15px;
+                }
+                /* ปรับปุ่มเพิ่มข้อมูลให้เต็มจอ หรือเว้นระยะห่างให้กดง่ายขึ้น */
+                .btn-add {
+                    width: 100%;
+                    text-align: center;
+                    margin-top: 10px;
+                    margin-bottom: 10px;
+                }
+                /* ปรับให้ตารางเลื่อนซ้ายขวาได้เนียนขึ้นบนมือถือ */
+                .table-responsive {
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                }
+            }
         </style>
     </head>
     <body>
